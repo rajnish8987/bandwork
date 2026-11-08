@@ -1,0 +1,9 @@
+Copyright (c) 2026 Rajnish Singh. All rights reserved.
+
+This code is published so that it can be read. No licence is granted to copy, modify
+or distribute it without written permission from the owner.
+
+Third-party parts keep their own licences:
+- Big Shoulders Display and Atkinson Hyperlegible fonts: SIL Open Font License (public/fonts)
+- MediaPipe Tasks Vision and its pose model: Apache License 2.0 (public/vendor/mediapipe)
+- Exercise videos are not part of this project. They belong to their YouTube channels.

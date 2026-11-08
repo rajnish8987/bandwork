@@ -297,8 +297,16 @@ export function exerciseById(id) {
   return BY_ID.get(id);
 }
 
+// Exercises that usually load a sore area, left out when the person asks.
+const LOADS_AREA = {
+  knees: ['squat', 'split-squat', 'lateral-walk'],
+  back: ['deadlift', 'good-morning', 'bent-row'],
+  shoulders: ['overhead-press', 'lateral-raise', 'overhead-triceps', 'overhead-pull-apart', 'push-up'],
+};
+
 export function isAvailable(exercise, profile) {
   if (!exercise) return false;
+  if (profile.avoid?.some((area) => LOADS_AREA[area]?.includes(exercise.id))) return false;
   if (exercise.anchor && !profile.hasAnchor) return false;
   if (exercise.mini && !profile.hasMini) return false;
   return true;
