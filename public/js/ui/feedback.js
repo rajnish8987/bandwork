@@ -13,6 +13,21 @@ export function unlockSound() {
   }
 }
 
+/** A short beep for the rep tempo: high on the way up, low on the way down. */
+export function tempoBeep(high) {
+  if (!audio) return;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  const at = audio.currentTime;
+  osc.frequency.value = high ? 880 : 523;
+  gain.gain.setValueAtTime(0.0001, at);
+  gain.gain.exponentialRampToValueAtTime(0.3, at + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.12);
+  osc.connect(gain).connect(audio.destination);
+  osc.start(at);
+  osc.stop(at + 0.14);
+}
+
 export function restEnded({ sound, vibrate }) {
   if (vibrate) navigator.vibrate?.([220, 100, 220]);
   if (!sound || !audio) return;

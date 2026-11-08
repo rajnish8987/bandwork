@@ -1,3 +1,5 @@
+import { localeTag, t, tPlural } from '../core/i18n.js';
+
 const ENTITIES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
 /** Makes any value safe to place in HTML text or a quoted attribute. */
@@ -12,15 +14,18 @@ export function safeColor(value, fallback = '#7A838F') {
 }
 
 export function shortDate(time) {
-  return new Date(time).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  return new Date(time).toLocaleDateString(localeTag(), { day: 'numeric', month: 'short' });
 }
 
 export function longDate(time) {
-  return new Date(time).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+  return new Date(time).toLocaleDateString(localeTag(), { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
-export function plural(count, word) {
-  return `${count} ${word}${count === 1 ? '' : 's'}`;
+export const plural = tPlural;
+
+/** A full day name. Days use 0 for Sunday. */
+export function dayName(day) {
+  return [t('Sunday'), t('Monday'), t('Tuesday'), t('Wednesday'), t('Thursday'), t('Friday'), t('Saturday')][day];
 }
 
 /** A CSS background for one or more band colours, stacked bands as hard stripes. */

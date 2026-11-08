@@ -36,7 +36,7 @@ export function exerciseSeries(workouts, exerciseId) {
     const entry = w.exercises.find((e) => e.exerciseId === exerciseId);
     if (!entry?.sets.length) continue;
     const best = entry.sets.reduce(stronger);
-    series.push({ at: w.finishedAt, reps: best.reps, kg: best.kg, label: best.label, colors: best.colors });
+    series.push({ at: w.finishedAt, reps: best.reps, kg: best.kg, label: best.label, colors: best.colors, setup: entry.setup });
   }
   return series;
 }

@@ -1,5 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,7 +19,7 @@ test('every app file is stored for offline use', () => {
   const sw = readFileSync(join(PUBLIC, 'sw.js'), 'utf8');
   const missing = walk(PUBLIC)
     .map((f) => relative(PUBLIC, f).replaceAll('\\', '/'))
-    .filter((f) => f !== 'sw.js' && !f.endsWith('.txt'))
+    .filter((f) => f !== 'sw.js' && !f.endsWith('.txt') && !f.startsWith('vendor/'))
     .filter((f) => !sw.includes(`'./${f}'`));
   assert.deepEqual(missing, []);
 });
@@ -29,6 +30,33 @@ test('the offline list names only files that exist', () => {
   assert.ok(listed.length > 10);
   const present = new Set(walk(PUBLIC).map((f) => relative(PUBLIC, f).replaceAll('\\', '/')));
   assert.deepEqual(listed.filter((f) => !present.has(f)), []);
+});
+
+test('the security policy allows only the YouTube player from outside the app', () => {
+  const html = readFileSync(join(PUBLIC, 'index.html'), 'utf8');
+  const policy = html.match(/Content-Security-Policy" content="([^"]+)"/)[1];
+  assert.match(policy, /default-src 'self'/);
+  assert.match(policy, /frame-src https:\/\/www\.youtube-nocookie\.com;/);
+  assert.doesNotMatch(policy, /connect-src/, 'the pose library must stay unable to send usage data');
+  assert.equal((policy.match(/https?:/g) ?? []).length, 1);
+});
+
+test('every app script is valid, including ones loaded only on demand', () => {
+  const scripts = walk(join(PUBLIC, 'js')).filter((f) => f.endsWith('.js'));
+  assert.ok(scripts.length > 20);
+  for (const script of [...scripts, join(PUBLIC, 'sw.js')]) {
+    execFileSync(process.execPath, ['--check', script], { stdio: 'pipe' });
+  }
+});
+
+test('every guide picture exists', async () => {
+  const source = readFileSync(join(PUBLIC, 'js/ui/extra-screens.js'), 'utf8');
+  const named = [...source.matchAll(/'([a-z-]+\.(?:gif|jpg))'/g)].map((m) => m[1]);
+  assert.ok(named.length >= 10);
+  const present = new Set(readdirSync(join(PUBLIC, 'guide')));
+  assert.deepEqual(named.filter((name) => !present.has(name)), []);
+  // A moving picture needs a still one for people who turn off animation.
+  for (const name of named.filter((n) => n.endsWith('.gif'))) assert.ok(present.has(name.replace('.gif', '.jpg')), name);
 });
 
 test('the manifest offers installable icons', () => {

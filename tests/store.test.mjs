@@ -66,11 +66,11 @@ test('a backup drops any workout in progress', () => {
 });
 
 test('rejects text that is not JSON', () => {
-  assert.throws(() => parseBackup('hello'), /not a Bandwork backup/);
+  assert.throws(() => parseBackup('hello'), /not a Tensile backup/);
 });
 
 test('rejects JSON from another app', () => {
-  assert.throws(() => parseBackup('{"foo":1}'), /not a Bandwork backup/);
+  assert.throws(() => parseBackup('{"foo":1}'), /not a Tensile backup/);
 });
 
 test('rejects band colours that are not plain hex', () => {

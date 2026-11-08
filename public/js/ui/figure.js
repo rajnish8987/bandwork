@@ -2,6 +2,7 @@
 // text colour; the band has a core in --band with an outline in the text colour,
 // so it stays visible on every band colour, including its own.
 
+import { t } from '../core/i18n.js';
 import { blendPoses, FLOOR_Y, solvePose, VIEW } from './figure-math.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -127,7 +128,7 @@ export function mountFigure(container, exercise) {
   const svg = document.createElementNS(SVG, 'svg');
   svg.setAttribute('viewBox', `0 0 ${VIEW.w} ${VIEW.h}`);
   svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', `Animated figure showing ${exercise.name}`);
+  svg.setAttribute('aria-label', t('Animated figure showing {name}', { name: t(exercise.name) }));
   svg.classList.add('figure');
   container.replaceChildren(svg);
   const scene = buildScene(svg, exercise);

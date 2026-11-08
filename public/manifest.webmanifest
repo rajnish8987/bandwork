@@ -1,6 +1,6 @@
 {
-  "name": "Bandwork",
-  "short_name": "Bandwork",
+  "name": "Tensile",
+  "short_name": "Tensile",
   "description": "Resistance-band workouts that track your progress. Works offline.",
   "id": "./",
   "start_url": "./",
