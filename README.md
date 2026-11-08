@@ -4,6 +4,8 @@ A resistance-band workout app for your laptop and Android phone. It builds a pla
 from the bands you own, guides each set with an animated figure, runs your rest
 timer and tells you when to move to a stronger band.
 
+**Open it: <https://rajnish8987.github.io/bandwork/>**
+
 There are no accounts, ads or tracking. Your data stays on your device.
 
 ## What it does
@@ -19,9 +21,9 @@ There are no accounts, ads or tracking. Your data stays on your device.
 - **History:** a chart for each exercise, weekly consistency and a workout list.
 - **Works offline:** once installed from a secure address.
 
-## Run it on your laptop
+## Run it from your laptop
 
-You need [Node.js](https://nodejs.org) 22 or newer. Nothing else to install.
+Use this to run your own copy instead of the address above. You need [Node.js](https://nodejs.org) 22 or newer. Nothing else to install.
 
 Double-click `Start Bandwork.cmd`, or run:
 
@@ -34,7 +36,17 @@ icon at the right of the Chrome or Edge address bar.
 
 ## Run it on your Android phone
 
-### Option 1: try it now over Wi-Fi
+1. Open <https://rajnish8987.github.io/bandwork/> in Chrome on your phone.
+2. Tap the menu, then **Add to Home screen** and **Install**. If Chrome offers it,
+   **Install Bandwork** in the app's Settings does the same.
+
+It then opens from your home screen like any other app and works with no connection.
+Updates download in the background and appear the next time you open it.
+
+The laptop can use the same address, instead of running anything locally. Each
+device keeps its own data.
+
+### Without internet: over your Wi-Fi
 
 1. Start Bandwork on your laptop. The window shows a phone address, such as
    `http://192.168.1.20:5173`.
@@ -45,17 +57,6 @@ In this mode your laptop must be on and Bandwork running. The phone can't use it
 offline or keep the screen on, because Android only allows those on a secure
 (`https`) address. Your laptop's Wi-Fi address can also change, and the phone treats
 a new address as a new app with no data, so save a backup if you use this for long.
-
-### Option 2: install it properly (recommended)
-
-Host the `public` folder on any free `https` static host. Then the phone needs the
-laptop only for the first load:
-
-1. Open the `https` address in Chrome on your phone.
-2. Tap the menu, then **Add to Home screen** and **Install**.
-
-It then opens from your home screen like any other app and works with no connection.
-Updates download in the background and appear the next time you open it.
 
 ## Move data between devices
 
@@ -86,6 +87,7 @@ npm run icons   # redraw the app icons
 - `public/` is everything that gets served. `public/js/core` holds the plan,
   progression, session and storage logic, with no browser code. `public/js/ui` holds
   the screens and figure.
+- Pushing to `main` runs the tests and publishes `public/` to GitHub Pages.
 - When adding a file to `public/`, add it to the list in `public/sw.js`. A test fails
   if you forget.
 - To add an exercise, add it to `public/js/core/exercises.js`. Tests check that its
