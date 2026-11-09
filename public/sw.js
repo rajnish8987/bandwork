@@ -2,7 +2,7 @@
 // the store straight away and refresh in the background, so an update shows on
 // the next launch.
 
-const CACHE = 'tensile-v9';
+const CACHE = 'tensile-v10';
 
 // The camera rep counter in vendor/ is too large to store up front. It is stored
 // by the fetch handler below the first time someone opens it.
@@ -23,6 +23,7 @@ const FILES = [
   './js/core/insights.js',
   './js/core/locales/es.js',
   './js/core/locales/hi.js',
+  './js/core/old-address.js',
   './js/core/plan.js',
   './js/core/programs.js',
   './js/core/progression.js',

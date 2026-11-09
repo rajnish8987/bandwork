@@ -3,6 +3,7 @@ import { HOLD_TEMPO, restAnnouncement, setAnnouncement, tempoAt, TEMPOS } from '
 import { BAND_COLORS } from './core/color.js';
 import { exerciseById } from './core/exercises.js';
 import { localeTag, pickLanguage, setLanguage, t } from './core/i18n.js';
+import { removeOldCopies } from './core/old-address.js';
 import { swapOptions } from './core/plan.js';
 import { bandName, labelFor } from './core/progression.js';
 import { buildIcs } from './core/reminders.js';
@@ -1419,6 +1420,7 @@ window.addEventListener('appinstalled', () => {
 // The Android app already holds its own files, so it needs no offline worker.
 if ('serviceWorker' in navigator && window.isSecureContext && !isNative()) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
+  removeOldCopies(navigator.serviceWorker);
 }
 
 applyLanguage();
