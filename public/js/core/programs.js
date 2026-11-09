@@ -4,6 +4,7 @@
 import { autoProgram } from './autoplan.js';
 import { repRange } from './plan.js';
 import { weekStart } from './stats.js';
+import { TRACK, TRACK_ID } from './track.js';
 
 const WEEK = 7 * 86400000;
 
@@ -48,6 +49,7 @@ export const PROGRAMS = [
 /** A fixed program, or the person's own automatic plan. */
 export function programById(id, profile) {
   if (id === 'auto') return autoProgram(profile ?? {});
+  if (id === TRACK_ID) return TRACK;
   return PROGRAMS.find((p) => p.id === id);
 }
 

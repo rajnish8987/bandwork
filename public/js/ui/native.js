@@ -3,16 +3,18 @@
 
 import { ALL_NOTIFICATION_IDS, notificationSchedule } from '../core/reminders.js';
 
-const cache = new Map();
-
 export function isNative() {
   return Boolean(window.Capacitor?.isNativePlatform?.());
 }
 
-/** An Android plugin, reached through the bridge the app injects. */
+/**
+ * An Android plugin. Each method goes straight through the bridge Android injects,
+ * because this app does not bundle the JavaScript part of Capacitor.
+ */
 export function plugin(name) {
-  if (!cache.has(name)) cache.set(name, window.Capacitor.registerPlugin(name));
-  return cache.get(name);
+  return new Proxy({}, {
+    get: (_, method) => (options = {}) => window.Capacitor.nativePromise(name, String(method), options),
+  });
 }
 
 function downloadInBrowser(filename, text, type) {
@@ -37,13 +39,18 @@ export async function saveTextFile(filename, text, type) {
   await plugin('Share').share({ title: filename, url: uri });
 }
 
-/** Replaces the weekly notifications. Returns false if Android permission is refused. */
+/**
+ * Replaces the weekly notifications. allowed is false if Android permission is refused.
+ * Asking for exact timing makes the plugin open Android's "Alarms & reminders" page; if
+ * the person declines, it schedules them anyway and returns a warning.
+ */
 export async function applyNativeReminders(reminders) {
   const notifications = plugin('LocalNotifications');
   await notifications.cancel({ notifications: ALL_NOTIFICATION_IDS.map((id) => ({ id })) });
-  if (!reminders.days.length) return true;
+  if (!reminders.days.length) return { allowed: true, exact: false };
   const { display } = await notifications.requestPermissions();
-  if (display !== 'granted') return false;
-  await notifications.schedule({ notifications: notificationSchedule(reminders) });
-  return true;
+  if (display !== 'granted') return { allowed: false, exact: false };
+  const wantsExact = Boolean(reminders.exact);
+  const result = await notifications.schedule({ notifications: notificationSchedule(reminders, { exact: wantsExact }) });
+  return { allowed: true, exact: wantsExact && !result?.warning };
 }

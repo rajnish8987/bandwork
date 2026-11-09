@@ -55,14 +55,19 @@ export function buildIcs({ days, time }, now) {
   ].join('\r\n');
 }
 
-/** Weekly notifications for the Android app. Android counts weekdays from 1 for Sunday. */
-export function notificationSchedule({ days, time }) {
+/**
+ * Weekly notifications for the Android app. Android counts weekdays from 1 for Sunday.
+ * exact is only for when the person asks for it, because the plugin stops to send them
+ * to a system settings page if Android has not already allowed it.
+ */
+export function notificationSchedule({ days, time }, { exact = false } = {}) {
   const { hour, minute } = splitTime(time);
   return days.map((day) => ({
     id: FIRST_NOTIFICATION_ID + day,
     title: t('Time to train'),
     body: t('Your next band workout is ready.'),
-    schedule: { on: { weekday: day + 1, hour, minute }, allowWhileIdle: true },
+    isExactNotification: exact,
+    schedule: { on: { weekday: day + 1, hour, minute, second: 0 }, allowWhileIdle: true },
   }));
 }
 

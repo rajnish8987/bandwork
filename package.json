@@ -1,6 +1,6 @@
 {
-  "name": "bandwork",
-  "version": "2.0.0",
+  "name": "tensile",
+  "version": "2.1.0",
   "description": "Tensile: an offline resistance-band training app for laptop and Android.",
   "author": "Rajnish Singh (https://github.com/rajnish8987)",
   "private": true,

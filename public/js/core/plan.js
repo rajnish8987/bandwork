@@ -66,7 +66,7 @@ export function volumeFor(minutes) {
   return VOLUMES[minutes] ?? VOLUMES[30];
 }
 
-function resolveSlot(slot, profile, used) {
+export function resolveSlot(slot, profile, used) {
   for (const id of slot) {
     if (!isAvailable(exerciseById(id), profile)) continue;
     const swapped = profile.swaps?.[id];

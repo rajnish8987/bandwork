@@ -7,6 +7,18 @@ import { createRepCounter } from '../core/repcount.js';
 
 const BASE = new URL('../../vendor/mediapipe/', import.meta.url).href;
 
+// Kept for the whole visit. A workout opens the camera once a set, so loading it each
+// time would make people wait before every set for no benefit.
+let shared = null;
+
+function getLandmarker() {
+  shared ??= loadLandmarker().catch((err) => {
+    shared = null; // so a failed download can be tried again
+    throw err;
+  });
+  return shared;
+}
+
 async function loadLandmarker() {
   const { PoseLandmarker } = await import('../../vendor/mediapipe/vision_bundle.mjs');
   // Named directly so that only the one wasm build needs to ship with the app.
@@ -29,13 +41,71 @@ function mergeLandmarks(result) {
   return world.map((p, i) => ({ ...p, visibility: screen[i].visibility ?? p.visibility }));
 }
 
+// Reps do not need every frame. Reading fewer keeps the page responsive and the laptop
+// cooler over a long workout.
+const MIN_FRAME_MS = 66;
+
+/**
+ * Starts the camera and calls onFrame(landmarks, time) for each frame it reads.
+ * Returns a function that stops it.
+ */
+export function startPoseLoop({ video, onFrame, onReady, onError }) {
+  let stream = null;
+  let frame = null;
+  let closed = false;
+  let lastTime = -1;
+  let lastRead = -Infinity;
+  let landmarker = null;
+
+  const loop = () => {
+    if (closed) return;
+    frame = requestAnimationFrame(loop);
+    if (video.readyState < 2 || video.currentTime === lastTime) return;
+    const at = performance.now();
+    if (at - lastRead < MIN_FRAME_MS) return;
+    lastRead = at;
+    lastTime = video.currentTime;
+    onFrame(mergeLandmarks(landmarker.detectForVideo(video, at)), at);
+  };
+
+  (async () => {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('no camera');
+      landmarker = await getLandmarker();
+      if (closed) return;
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 } }, audio: false });
+      if (closed) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      video.srcObject = stream;
+      await video.play();
+      video.classList.add('live');
+      onReady?.();
+      loop();
+    } catch (err) {
+      if (closed) return;
+      const denied = err?.name === 'NotAllowedError' || err?.name === 'SecurityError';
+      onError?.(denied
+        ? t('Camera permission is off. Allow the camera for Tensile, then try again.')
+        : t('The rep counter could not start on this device. You can still count your reps by hand.'));
+    }
+  })();
+
+  return () => {
+    closed = true;
+    if (frame) cancelAnimationFrame(frame);
+    stream?.getTracks().forEach((track) => track.stop());
+  };
+}
+
 /**
  * Opens the camera coach.
  * onCount(count) runs when a rep is counted; onCue(text) when there is form advice;
  * onUse(count) when the person keeps the count; without it, this is practice and there
  * is no count to keep. onClose runs when the camera closes.
  */
-export function openCamera({ exercise, onCount, onCue, onUse, onClose }) {
+export function openCamera({ exercise, slowNegatives, onCount, onCue, onUse, onClose }) {
   const dialog = document.createElement('dialog');
   dialog.className = 'camera';
   dialog.innerHTML = `
@@ -64,7 +134,7 @@ export function openCamera({ exercise, onCount, onCue, onUse, onClose }) {
   const useButton = dialog.querySelector('#camera-use');
   const cueBox = dialog.querySelector('#camera-cue');
   const notes = dialog.querySelector('#camera-notes');
-  const coach = createFormCoach(exercise);
+  const coach = createFormCoach(exercise, { slowNegatives });
   const counter = createRepCounter(exercise, { onRep: (rep) => coach.repDone(rep) });
 
   const showNotes = () => {
@@ -73,27 +143,9 @@ export function openCamera({ exercise, onCount, onCue, onUse, onClose }) {
     notes.querySelector('ul').innerHTML = rows.join('');
   };
 
-  let stream = null;
-  let landmarker = null;
-  let frame = null;
-  let closed = false;
   let shown = 0;
-  let lastTime = -1;
 
-  const stop = () => {
-    closed = true;
-    if (frame) cancelAnimationFrame(frame);
-    stream?.getTracks().forEach((track) => track.stop());
-    landmarker?.close();
-  };
-
-  const loop = () => {
-    if (closed) return;
-    frame = requestAnimationFrame(loop);
-    if (video.readyState < 2 || video.currentTime === lastTime) return;
-    lastTime = video.currentTime;
-    const at = performance.now();
-    const landmarks = mergeLandmarks(landmarker.detectForVideo(video, at));
+  const onFrame = (landmarks, at) => {
     const count = counter.update(landmarks, at);
     const cue = coach.observe(landmarks, at);
     if (cue) {
@@ -112,32 +164,18 @@ export function openCamera({ exercise, onCount, onCue, onUse, onClose }) {
     }
   };
 
-  const fail = (err) => {
-    if (closed) return;
-    const denied = err?.name === 'NotAllowedError' || err?.name === 'SecurityError';
-    status.textContent = denied
-      ? t('Camera permission is off. Allow the camera for Tensile, then try again.')
-      : t('The rep counter could not start on this device. You can still count your reps by hand.');
-    status.classList.add('camera-error');
-  };
-
-  (async () => {
-    try {
-      if (!navigator.mediaDevices?.getUserMedia) throw new Error('no camera');
-      landmarker = await loadLandmarker();
-      if (closed) { landmarker.close(); return; }
-      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 } }, audio: false });
-      if (closed) { stream.getTracks().forEach((track) => track.stop()); return; }
-      video.srcObject = stream;
-      await video.play();
-      video.classList.add('live');
+  const stop = startPoseLoop({
+    video,
+    onFrame,
+    onReady: () => {
       useButton.disabled = false;
       status.textContent = t('Step back until your whole body is in view.');
-      loop();
-    } catch (err) {
-      fail(err);
-    }
-  })();
+    },
+    onError: (message) => {
+      status.textContent = message;
+      status.classList.add('camera-error');
+    },
+  });
 
   useButton.addEventListener('click', () => {
     onUse?.(counter.count);

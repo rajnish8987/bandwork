@@ -9,6 +9,7 @@ import { labelFor, loadOf, prescribe, suggestBand } from '../public/js/core/prog
 import { lighterWeekStatus } from '../public/js/core/recovery.js';
 import { defaultWeek } from '../public/js/core/schedule.js';
 import { sessionMinutes, startSession } from '../public/js/core/session.js';
+import { notificationSchedule } from '../public/js/core/reminders.js';
 import { defaultBands, defaultState, makeBackup, parseBackup, STANDARD_TENSIONS } from '../public/js/core/store.js';
 import { APP_NAME, APP_VERSION, CREDITS } from '../public/js/core/version.js';
 
@@ -258,13 +259,30 @@ test('web and Android carry the same name and version', () => {
   assert.match(projectFile('public/index.html'), /<title>Tensile<\/title>/);
 });
 
+test('documents point to the new address, and notifications use the logo', () => {
+  const readme = projectFile('README.md');
+  assert.match(readme, /rajnish8987\.github\.io\/tensile\//);
+  assert.doesNotMatch(readme, /github\.io\/bandwork/);
+  assert.equal(JSON.parse(projectFile('package.json')).name, 'tensile');
+  const config = JSON.parse(projectFile('capacitor.config.json'));
+  assert.equal(config.plugins.LocalNotifications.smallIcon, 'ic_stat_tensile');
+  for (const density of ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi']) {
+    assert.ok(readFileSync(new URL(`../android/app/src/main/res/drawable-${density}/ic_stat_tensile.png`, import.meta.url)).length > 100, density);
+  }
+});
+
+test('reminders do not send people to the system alarm page', () => {
+  assert.ok(notificationSchedule({ days: [1], time: '07:00' }).every((n) => n.isExactNotification === false));
+  assert.ok(notificationSchedule({ days: [1], time: '07:00' }, { exact: true }).every((n) => n.isExactNotification === true));
+});
+
 test('backups and saved data from before the rename still load', () => {
   const old = JSON.stringify({ app: 'bandwork', version: 1, profile: { bands: [{ id: 'y', name: 'Yellow', color: '#F5C518', kg: 5 }] }, workouts: [] });
   assert.equal(parseBackup(old).profile.bands[0].kg, 5);
 });
 
 test('the old name appears nowhere a person can read it', () => {
-  for (const path of ['public/index.html', 'public/manifest.webmanifest', 'public/js/ui/screens.js', 'public/js/ui/extra-screens.js', 'public/js/ui/camera.js', 'public/js/app.js', 'public/js/core/locales/hi.js', 'public/js/core/locales/es.js', 'public/js/core/reminders.js']) {
+  for (const path of ['public/index.html', 'public/manifest.webmanifest', 'public/js/ui/screens.js', 'public/js/ui/extra-screens.js', 'public/js/ui/camera.js', 'public/js/app.js', 'public/js/core/locales/hi.js', 'public/js/core/locales/es.js', 'public/js/core/reminders.js', 'serve.mjs', 'Start Tensile.cmd']) {
     assert.doesNotMatch(projectFile(path), /Bandwork/, path);
   }
 });

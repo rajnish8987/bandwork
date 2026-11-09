@@ -1,4 +1,4 @@
-// Small static server for running Bandwork on this laptop and on a phone on the
+// Small static server for running Tensile on this laptop and on a phone on the
 // same Wi-Fi. It only ever serves files inside public/.
 
 import { createServer } from 'node:http';
@@ -82,7 +82,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exit(1);
   });
   server.listen(port, '0.0.0.0', () => {
-    console.log('Bandwork is running.\n');
+    console.log('Tensile is running.\n');
     console.log(`  This laptop:   http://localhost:${port}`);
     for (const address of networkAddresses()) console.log(`  Phone (same Wi-Fi): http://${address}:${port}`);
     console.log('\nPress Ctrl+C to stop.');

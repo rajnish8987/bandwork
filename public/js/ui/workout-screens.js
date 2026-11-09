@@ -3,11 +3,13 @@
 import { onColor } from '../core/color.js';
 import { exerciseById } from '../core/exercises.js';
 import { t } from '../core/i18n.js';
-import { bandName, labelFor } from '../core/progression.js';
+import { bandName, holdRange, labelFor } from '../core/progression.js';
+import { plannedReps } from '../core/session.js';
 import { describeSetup, setupFields } from '../core/setup.js';
+import { METHOD_NOTES } from '../core/track.js';
 import { formatLoad } from '../core/units.js';
 import { searchUrl, videoFor, watchUrl } from '../core/videos.js';
-import { esc, plural, safeColor } from './html.js';
+import { amount, esc, safeColor } from './html.js';
 
 /** The colour the workout screen wears: the strongest band selected. */
 export function fieldColors(bandIds, bands) {
@@ -20,6 +22,7 @@ export function howTo(exercise) {
   return `
     <p>${esc(t(exercise.setup))}</p>
     <ul class="cues">${exercise.cues.map((c) => `<li>${esc(t(c))}</li>`).join('')}</ul>
+    <p>${esc(exercise.timed ? t('Keep breathing normally.') : t('Breathe out as you push or pull, and in as you return.'))}</p>
     ${exercise.anchor ? `<p>${esc(t('Close the door on the anchor, on the side you pull toward, and give it a firm test pull first.'))}</p>` : ''}`;
 }
 
@@ -35,7 +38,7 @@ export function videoBlock(exercise, profile) {
     <p class="hint">${esc(notice)}</p>
     <p class="video-status" role="status" hidden></p>
     <div class="video-links">
-      <a href="${esc(watchUrl(video.id))}" target="_blank" rel="noopener">${esc(t('Open in YouTube'))}</a>
+      <a href="${esc(watchUrl(video.id, video.at))}" target="_blank" rel="noopener">${esc(t('Open in YouTube'))}</a>
       <a href="${esc(searchUrl(exercise.name))}" target="_blank" rel="noopener">${esc(t('Find another video'))}</a>
       <button type="button" class="text-button" data-action="video-own">${esc(t('Use my own video'))}</button>
       ${video.own ? `<button type="button" class="text-button" data-action="video-reset">${esc(t('Use the suggested video'))}</button>` : ''}
@@ -67,12 +70,30 @@ function setupBox(exercise, entry) {
   </details>`;
 }
 
+/** What to aim for on this set, in words. */
+export function goalText(exercise, active, step, entry) {
+  const { min, max } = active.range;
+  if (active.method === 'failure' && step.setIndex === entry.targetSets - 1) return t('Last set: go until you cannot do one more clean rep');
+  if (exercise.timed) {
+    const hold = holdRange(active.range);
+    return active.scheme
+      ? t('Hold for {seconds} seconds', { seconds: plannedReps(active, step) })
+      : t('Hold for {min}–{max} seconds', { min: hold.min, max: hold.max });
+  }
+  if (active.scheme) {
+    const reps = plannedReps(active, step);
+    return exercise.perSide ? t('Aim for {reps} reps each side', { reps }) : t('Aim for {reps} reps', { reps });
+  }
+  return exercise.perSide ? t('Aim for {min}–{max} reps each side', { min, max }) : t('Aim for {min}–{max} reps', { min, max });
+}
+
+export const setOfText = (active, n, total) => (active.circuit ? t('Round {n} of {total}', { n, total }) : t('Set {n} of {total}', { n, total }));
+
 export function setScreen({ state, step, draft, swaps, canSpeak }) {
   const { active, profile } = state;
   const entry = active.exercises[step.exIndex];
   const exercise = exerciseById(entry.exerciseId);
   const { band, on } = fieldColors(draft.bandIds, profile.bands);
-  const { min, max } = active.range;
 
   const chips = [...profile.bands].sort((a, b) => a.kg - b.kg).map((b) => `
     <button type="button" class="chip" data-action="toggle-band" data-id="${esc(b.id)}" aria-pressed="${draft.bandIds.includes(b.id)}">
@@ -80,9 +101,7 @@ export function setScreen({ state, step, draft, swaps, canSpeak }) {
       <span class="chip-kg">${esc(formatLoad(b.kg, profile.unit))}</span>
     </button>`).join('');
 
-  const rangeText = exercise.perSide
-    ? t('Aim for {min}–{max} reps each side', { min, max })
-    : t('Aim for {min}–{max} reps', { min, max });
+  const rangeText = goalText(exercise, active, step, entry);
 
   return `
     <div class="work" id="work" style="--band:${band};--on:${on}">
@@ -98,25 +117,27 @@ export function setScreen({ state, step, draft, swaps, canSpeak }) {
       </section>
 
       <section class="controls">
-        <p class="set-of">${esc(t('Set {n} of {total}', { n: step.setIndex + 1, total: entry.targetSets }))} <span class="set-range">${esc(rangeText)}</span></p>
+        <p class="set-of">${esc(setOfText(active, step.setIndex + 1, entry.targetSets))} <span class="set-range">${esc(rangeText)}</span></p>
+        ${active.method ? `<p class="hint method-note">${esc(t(METHOD_NOTES[active.method]))}</p>` : ''}
 
         <div class="stepper">
           <button type="button" class="step" data-action="reps-down" aria-label="${esc(t('One rep fewer'))}">−</button>
-          <output class="reps" id="reps-value" aria-live="polite" aria-label="${esc(t('Reps'))}">${draft.reps}</output>
+          <output class="reps" id="reps-value" aria-live="polite" aria-label="${esc(exercise.timed ? t('Seconds') : t('Reps'))}">${draft.reps}</output>
           <button type="button" class="step" data-action="reps-up" aria-label="${esc(t('One rep more'))}">+</button>
         </div>
         <p class="tempo-status" id="tempo-status" role="status" hidden></p>
 
         <div class="coach-row">
-          <button type="button" class="coach-button" id="tempo-button" data-action="tempo-toggle">${esc(t('Count reps for me'))}</button>
+          <button type="button" class="coach-button" id="tempo-button" data-action="tempo-toggle">${esc(exercise.timed ? t('Count seconds for me') : t('Count reps for me'))}</button>
           <button type="button" class="coach-button" data-action="camera-open">${esc(t('Camera coach'))}</button>
+          <button type="button" class="coach-button" data-action="hands-free">${esc(t('Hands-free'))}</button>
           ${canSpeak ? `<button type="button" class="coach-button" data-action="voice-toggle" aria-pressed="${profile.voice}">${esc(profile.voice ? t('Voice on') : t('Voice off'))}</button>` : ''}
         </div>
 
-        <fieldset class="chips">
+        ${exercise.bodyweight ? `<p class="hint">${esc(t('No band needed for this one.'))}</p>` : `<fieldset class="chips">
           <legend>${esc(t('Band used'))} <span id="band-label" class="band-label">${esc(labelFor(draft.bandIds, profile.bands))}</span></legend>
           ${chips}
-        </fieldset>
+        </fieldset>`}
 
         ${effortRow(draft)}
 
@@ -144,6 +165,12 @@ export function restScreen({ state, step, lastSet, seconds, progress }) {
   const exercise = exerciseById(entry.exerciseId);
   const color = safeColor(lastSet?.colors?.at(-1), '#B9C0C9');
   const isNewExercise = step.setIndex === 0;
+  const lastExercise = exerciseById(active.exercises.find((e) => e.sets.includes(lastSet))?.exerciseId);
+  const logged = lastExercise?.bodyweight
+    ? t('You logged {count}.', { count: amount(lastExercise, lastSet.reps) })
+    : t('You logged {count} on {band}.', { count: amount(lastExercise, lastSet?.reps), band: lastSet?.label });
+  let nextLabel = isNewExercise ? t('Next exercise') : t('Next set');
+  if (active.circuit) nextLabel = t('Next round');
 
   return `
     <div class="rest">
@@ -163,9 +190,9 @@ export function restScreen({ state, step, lastSet, seconds, progress }) {
       </div>
 
       <div class="rest-next">
-        <p class="rest-next-label">${esc(isNewExercise ? t('Next exercise') : t('Next set'))}</p>
+        <p class="rest-next-label">${esc(nextLabel)}</p>
         <p class="rest-next-name">${esc(t(exercise.name))}</p>
-        <p>${esc(t('Set {n} of {total}', { n: step.setIndex + 1, total: entry.targetSets }))}${lastSet ? `. ${esc(t('You logged {count} on {band}.', { count: plural(lastSet.reps, 'rep'), band: lastSet.label }))}` : ''}</p>
+        <p>${esc(setOfText(active, step.setIndex + 1, entry.targetSets))}${lastSet ? `. ${esc(logged)}` : ''}</p>
         <button type="button" class="text-button" data-action="undo-set">${esc(t('Fix the last set'))}</button>
       </div>
     </div>`;

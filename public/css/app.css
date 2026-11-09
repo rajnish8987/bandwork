@@ -95,7 +95,7 @@ legend { font-weight: 700; padding: 0; margin-bottom: 8px; }
   inset: auto 0 0;
   z-index: 5;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   background: var(--paper);
   border-top: 2px solid var(--ink);
   padding-bottom: env(safe-area-inset-bottom);
@@ -105,7 +105,7 @@ legend { font-weight: 700; padding: 0; margin-bottom: 8px; }
   align-items: center;
   justify-content: center;
   height: var(--tabs-height);
-  font: 700 clamp(15px, 4.6vw, 20px)/1 var(--display);
+  font: 700 clamp(13px, 3.9vw, 20px)/1 var(--display);
   text-decoration: none;
   text-align: center;
   color: var(--muted);
@@ -113,7 +113,7 @@ legend { font-weight: 700; padding: 0; margin-bottom: 8px; }
 .tabs a[aria-current='page'] { color: var(--ink); box-shadow: inset 0 5px 0 var(--ink); }
 
 /* Status messages */
-.message { padding: 12px 14px; border-left: 6px solid var(--ink); background: var(--paper); margin: 12px 0; }
+.message { padding: 12px 14px; border-left: 6px solid var(--ink); background: var(--paper); margin: 12px 0; scroll-margin: 96px 0; } /* clears the fixed tabs */
 .message.error { border-color: var(--danger); color: var(--danger); }
 
 /* Forms */
@@ -427,6 +427,20 @@ dialog.camera h2 { font-size: 26px; margin: 0; }
 dialog.camera .dialog-actions { margin-top: 4px; }
 .camera-cue { padding: 12px 14px; border-left: 8px solid var(--danger); background: var(--chalk); font-size: clamp(22px, 6vw, 34px); line-height: 1.15; font-weight: 700; }
 .camera-notes { font-size: 15px; margin-bottom: 4px; }
+.hf-goal { font-size: clamp(20px, 5vw, 28px); line-height: 1.2; font-weight: 700; }
+.hf-figure { display: none; }
+/* On a laptop you stand a few metres back, so the picture and the corrections sit side by side, large. */
+@media (min-width: 900px) {
+  dialog.camera[open] { display: grid; grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); grid-template-rows: auto auto auto 1fr auto auto; gap: 8px 24px; }
+  dialog.camera h2 { grid-column: 1 / -1; }
+  dialog.camera .camera-view { grid-column: 1; grid-row: 2 / -1; min-height: 0; }
+  dialog.camera > :not(h2, .camera-view) { grid-column: 2; }
+  dialog.camera .camera-cue { font-size: clamp(40px, 3.6vw, 56px); }
+  dialog.camera .camera-count { font-size: clamp(140px, 16vw, 240px); }
+  dialog.hands-free h2 { font: 800 clamp(40px, 4vw, 60px)/1 var(--display); }
+  dialog.hands-free .hf-goal { font-size: clamp(26px, 2.4vw, 36px); }
+  dialog.hands-free .hf-figure { display: block; width: min(100%, 26vh); margin: 0 auto; --band: var(--danger); }
+}
 .try-camera { width: 100%; max-width: 420px; margin: 14px auto 0; }
 
 /* Guide */
@@ -440,6 +454,34 @@ dialog.camera .dialog-actions { margin-top: 4px; }
 
 /* Weekly schedule */
 .schedule-note { margin-top: 16px; }
+
+/* Specials */
+.level-jumps { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.level-jump { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 14px; border: 2px solid var(--ink); border-radius: 999px; font-weight: 700; text-decoration: none; }
+.special-level { margin-top: 28px; padding-top: 14px; border-top: 4px solid var(--ink); scroll-margin-top: 8px; }
+.special-level > .lead { margin-bottom: 12px; }
+.track-start { margin-bottom: 6px; }
+.special-list { margin-top: 14px; }
+.special-card { padding: 16px 0; border-top: 2px solid var(--rule); scroll-margin-top: 8px; }
+.special-card h3 { margin: 0 0 6px; font: 700 22px/1.15 var(--display); }
+.special-card > p { margin-bottom: 8px; }
+.special-player { margin: 8px 0; }
+.moments-box summary { min-height: 44px; display: flex; align-items: center; gap: 6px; font-weight: 700; cursor: pointer; }
+.moments-box summary small { display: inline; }
+.moments { display: grid; gap: 4px; margin-top: 4px; }
+.moment-row { display: flex; align-items: stretch; gap: 8px; }
+.moment { flex: 1; display: block; min-height: 44px; padding: 10px 12px; border: 0; border-radius: 8px; background: var(--paper); color: inherit; font: inherit; text-align: left; text-decoration: none; cursor: pointer; }
+.moment-time { display: inline-block; min-width: 3.2em; font-weight: 700; font-variant-numeric: tabular-nums; }
+.moment-link { display: flex; align-items: center; padding: 0 8px; min-height: 44px; }
+.know-how { border-top: 2px solid var(--rule); }
+.know-how summary { min-height: 48px; padding: 12px 0; font-weight: 700; cursor: pointer; }
+.know-how p { margin: 8px 0; max-width: 38em; }
+.know-how .cues { margin-bottom: 8px; }
+.method-note { margin-top: 6px; }
+
+/* Logo and name */
+.brand { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; font: 800 28px/1 var(--display); }
+.brand img { border-radius: 10px; }
 
 /* Credits */
 .page:has(+ .credits) { padding-bottom: 16px; }
@@ -485,7 +527,7 @@ input[type='time'] { width: 100%; min-height: 46px; padding: 8px 10px; border: 2
 :lang(hi) .display { line-height: 1.2; font-size: clamp(36px, 9vw, 54px); }
 :lang(hi) .display.huge { font-size: clamp(44px, 12vw, 80px); line-height: 1.15; }
 :lang(hi) .field-name { line-height: 1.2; font-size: clamp(32px, 9vw, 58px); }
-:lang(hi) .tabs a { font-size: clamp(12px, 3.5vw, 16px); }
+:lang(hi) .tabs a { font-size: clamp(11px, 3.1vw, 16px); }
 
 /* Short phones: keep the figure and the reps on one screen */
 @media (max-height: 720px) and (max-width: 899px) {

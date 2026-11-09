@@ -10,9 +10,11 @@ export const FORM_CUES = {
   even: () => t('Keep both sides even.'),
   tall: () => t('Stay tall and avoid swinging.'),
   chest: () => t('Lift your chest.'),
+  negative: () => t('Lower more slowly, for about 3 seconds.'),
 };
 
 const QUICK_REP_MS = 1000; // measured between leaving the start and returning, about two thirds of a rep
+const QUICK_NEGATIVE_MS = 2500; // the same measure for a rep of 1 second up, 1 held and 3 down
 const SHORT_REP_SHARE = 0.6;
 const UNEVEN_SHARE = 0.6;
 const UNEVEN_GAP = 25;
@@ -27,9 +29,11 @@ const MIN_VISIBILITY = 0.5;
 
 const STAY_UPRIGHT = new Set([
   'overhead-press', 'curl', 'lateral-raise', 'pressdown', 'overhead-triceps', 'pull-apart', 'overhead-pull-apart',
-  'face-pull', 'pallof', 'door-press', 'wrap-press',
+  'face-pull', 'pallof', 'door-press', 'wrap-press', 'arnold-press', 'front-raise', 'side-front-raise', 'upright-row',
+  'hammer-curl', 'reverse-curl', 'behind-back-curl', 'reverse-pushdown', 'chest-fly', 'incline-press', 'incline-fly',
+  'decline-press', 'decline-fly', 'reverse-fly',
 ]);
-const CHEST_UP = new Set(['squat', 'split-squat']);
+const CHEST_UP = new Set(['squat', 'split-squat', 'lunge', 'goblet-squat', 'bulgarian-squat']);
 
 function torsoDirection(landmarks) {
   const points = [11, 12, 23, 24].map((i) => landmarks[i]);
@@ -42,7 +46,8 @@ function torsoDirection(landmarks) {
 
 const degreesBetween = (a, b) => (Math.acos(Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]))) * 180) / Math.PI;
 
-export function createFormCoach(exercise) {
+/** slowNegatives is for weeks of slow lowering, when a normal speed is too fast. */
+export function createFormCoach(exercise, { slowNegatives = false } = {}) {
   const tally = {};
   const lastSaid = {};
   const lastCounted = {};
@@ -71,7 +76,9 @@ export function createFormCoach(exercise) {
     tally,
     /** Called for each completed rep on one side of the body. */
     repDone({ side, travel, ms, at }) {
-      if (ms < QUICK_REP_MS) raise('slower', at);
+      if (slowNegatives) {
+        if (ms < QUICK_NEGATIVE_MS) raise('negative', at);
+      } else if (ms < QUICK_REP_MS) raise('slower', at);
       const best = bestTravel[side] ?? 0;
       if (best && travel < best * SHORT_REP_SHARE) raise('range', at);
       bestTravel[side] = Math.max(best, travel);

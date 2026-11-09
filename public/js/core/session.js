@@ -5,7 +5,7 @@ import { exerciseById } from './exercises.js';
 import { t } from './i18n.js';
 import { buildPlan, isFocus, volumeFor } from './plan.js';
 import { sessionSettings } from './programs.js';
-import { bandCombos, labelFor, loadOf, prescribe } from './progression.js';
+import { bandCombos, labelFor, loadOf, prescribe, prescribeScheme } from './progression.js';
 import { comebackLevel, lighterWeekStatus } from './recovery.js';
 import { todayPlan } from './schedule.js';
 import { newId } from './store.js';
@@ -18,6 +18,8 @@ const QUICK_REST = 45;
 const SET_SECONDS = 40;
 const MAX_SETS = 6;
 const LEVEL_SETS = { beginner: 0, intermediate: 0, master: 1 };
+const CIRCUIT_SET_SECONDS = 35;
+const HOLD_SECONDS_PER_REP = 3;
 
 function historyFor(workouts, exerciseId) {
   // Lighter sessions are easy on purpose, so they say nothing about progress.
@@ -46,10 +48,13 @@ function easedOff(target, level, bands, range) {
 }
 
 function targetFor(exerciseId, state, session) {
-  const { range, lighter, comeback } = session;
+  const { range, lighter, comeback, scheme } = session;
+  const exercise = exerciseById(exerciseId);
   const history = historyFor(state.workouts, exerciseId);
-  const target = prescribe(exerciseById(exerciseId), history, state.profile.bands, range, state.profile.level);
-  if (!history.length) return target;
+  const target = scheme
+    ? prescribeScheme(exercise, history, state.profile.bands, scheme, state.profile.level)
+    : prescribe(exercise, history, state.profile.bands, range, state.profile.level);
+  if (!history.length || exercise.bodyweight) return target;
   if (comeback) return easedOff(target, comeback, state.profile.bands, range);
   if (lighter) {
     const last = history.at(-1).sets.at(-1);
@@ -69,6 +74,7 @@ function chooseTemplate(state, now, customId) {
   if (custom?.custom) return { template: custom, oneOff: true };
   const today = todayPlan(state, now);
   if (today.kind === 'workout') return { template: today.template, oneOff: true }; // a schedule has no rotation to move
+  if (today.fallback) return { template: today.fallback, oneOff: true }; // training anyway, on a fixed track
   const plan = buildPlan(profile);
   return { template: plan[profile.nextIndex % plan.length], oneOff: false };
 }
@@ -82,13 +88,18 @@ export function startSession(state, now, { quick = false, customId = null } = {}
   const comeback = comebackLevel(workouts, now);
   const lighter = lighterWeekStatus(next, now).active;
 
+  const scheme = !quick && template.scheme ? template.scheme : null;
+  const circuit = Boolean(scheme) && template.method === 'circuit';
   const baseSets = template.sets ?? volumeFor(profile.minutes).sets;
   const levelSets = template.sets ? 0 : LEVEL_SETS[profile.level] ?? 0; // a saved workout keeps the sets it was given
   const sets = quick ? QUICK_SETS : Math.max(1, baseSets + levelSets + settings.setsDelta - (lighter ? 1 : 0));
-  const range = quick ? { ...settings.range, rest: Math.min(settings.range.rest, QUICK_REST) } : settings.range;
+  const chosenRest = profile.rest && profile.rest !== 'auto' && !circuit ? profile.rest : template.range?.rest;
+  let range = settings.range;
+  if (quick) range = { ...settings.range, rest: Math.min(settings.range.rest, QUICK_REST) };
+  else if (template.range) range = { ...template.range, rest: chosenRest };
   const count = quick ? QUICK_EXERCISES : template.exerciseIds.length;
 
-  const session = { range, lighter, comeback };
+  const session = { range, lighter, comeback, scheme };
   next.active = {
     id: newId('workout'),
     templateId: template.id,
@@ -101,10 +112,12 @@ export function startSession(state, now, { quick = false, customId = null } = {}
     ...(template.custom ? { custom: true } : {}),
     ...(lighter ? { lighter: true } : {}),
     ...(comeback ? { comeback } : {}),
+    ...(scheme ? { scheme, method: template.method } : {}),
+    ...(circuit ? { circuit: true } : {}),
     exercises: template.exerciseIds.slice(0, count).map((exerciseId, i) => ({
       exerciseId,
       plannedId: template.plannedIds[i],
-      targetSets: !quick && !lighter && isFocus(exerciseById(exerciseId), profile.focus) ? Math.min(MAX_SETS, sets + 1) : sets,
+      targetSets: !scheme && !quick && !lighter && isFocus(exerciseById(exerciseId), profile.focus) ? Math.min(MAX_SETS, sets + 1) : sets,
       target: targetFor(exerciseId, next, session),
       setup: lastSetup(workouts, exerciseId),
       sets: [],
@@ -117,15 +130,33 @@ export function startSession(state, now, { quick = false, customId = null } = {}
 /** Rough length of a session, to the nearest five minutes. */
 export function sessionMinutes(active) {
   const totalSets = active.exercises.reduce((sum, e) => sum + e.targetSets, 0);
+  if (active.circuit) {
+    const rounds = Math.max(...active.exercises.map((e) => e.targetSets));
+    return Math.max(5, Math.round((totalSets * CIRCUIT_SET_SECONDS + (rounds - 1) * active.range.rest) / 300) * 5);
+  }
   const seconds = totalSets * (SET_SECONDS + active.range.rest);
   return Math.max(5, Math.round(seconds / 300) * 5);
 }
 
 /** The set to do now, or null when the workout has no sets left. */
 export function currentStep(active) {
+  if (active.circuit) {
+    const open = active.exercises.map((e, i) => ({ e, i })).filter(({ e }) => !e.skipped && e.sets.length < e.targetSets);
+    if (!open.length) return null;
+    const round = Math.min(...open.map(({ e }) => e.sets.length));
+    return { exIndex: open.find(({ e }) => e.sets.length === round).i, setIndex: round };
+  }
   const exIndex = active.exercises.findIndex((e) => !e.skipped && e.sets.length < e.targetSets);
   if (exIndex === -1) return null;
   return { exIndex, setIndex: active.exercises[exIndex].sets.length };
+}
+
+/** The reps or seconds to aim for on a set. */
+export function plannedReps(active, step) {
+  const entry = active.exercises[step.exIndex];
+  const planned = active.scheme?.[step.setIndex];
+  if (!planned) return entry.target.repsGoal;
+  return exerciseById(entry.exerciseId).timed ? planned * HOLD_SECONDS_PER_REP : planned;
 }
 
 export function logSet(state, { reps, bandIds, effort }, now) {
@@ -142,7 +173,9 @@ export function logSet(state, { reps, bandIds, effort }, now) {
     at: now,
     ...(effort ? { effort } : {}),
   });
-  active.restEndsAt = currentStep(active) ? now + active.range.rest * 1000 : null;
+  const following = currentStep(active);
+  const rests = following && (!active.circuit || following.setIndex > step.setIndex);
+  active.restEndsAt = rests ? now + active.range.rest * 1000 : null;
   return next;
 }
 
@@ -217,6 +250,7 @@ export function finishSession(state, now) {
     ...(active.quick ? { quick: true } : {}),
     ...(active.lighter ? { lighter: true } : {}),
     ...(active.comeback ? { comeback: active.comeback } : {}),
+    ...(active.scheme ? { scheme: active.scheme } : {}),
     exercises: done.map((e) => ({
       exerciseId: e.exerciseId,
       sets: e.sets,

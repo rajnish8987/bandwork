@@ -4,10 +4,43 @@
 import { exerciseById } from './exercises.js';
 import { MAIN_WORK } from './insights.js';
 import { allBuiltIn, customChoices, splitFor } from './plan.js';
+import { programStatus } from './programs.js';
+import { weekStart } from './stats.js';
+import { trackDay, trackWeekCount } from './track.js';
 
 const SPREAD = { 2: [1, 4], 3: [1, 3, 5], 4: [1, 2, 4, 5], 5: [1, 2, 3, 5, 6], 6: [1, 2, 3, 4, 5, 6], 7: [1, 2, 3, 4, 5, 6, 0] };
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 const IGNORED_FOR_RECOVERY = new Set(['core', 'calves']);
+const WEEK = 7 * 86400000;
+
+/** The current week of the fixed track, or null when the person is not on it. */
+function trackStatus(profile, now) {
+  const status = programStatus(profile, now);
+  return status?.phase?.plan ? status : null;
+}
+
+function nextOnTrack(profile, status, now) {
+  for (let offset = 1; offset <= 7; offset += 1) {
+    const date = new Date(now);
+    date.setDate(date.getDate() + offset);
+    const week = status.week + Math.round((weekStart(date.getTime()) - weekStart(now)) / WEEK);
+    const day = date.getDay();
+    const plan = trackDay(profile, week, day);
+    if (plan?.kind === 'workout') return { day, offset, name: plan.template.name, template: plan.template };
+  }
+  return null;
+}
+
+function planOnTrack({ profile, workouts }, status, now) {
+  const date = new Date(now);
+  const today = trackDay(profile, status.week, date.getDay());
+  const next = nextOnTrack(profile, status, now);
+  const fallback = today.template ?? next?.template ?? null;
+  const base = { next, method: today.method, track: true };
+  if (workouts.some((w) => new Date(w.finishedAt).toDateString() === date.toDateString())) return { ...base, kind: 'done', fallback };
+  if (today.kind === 'workout') return { ...base, kind: 'workout', template: today.template };
+  return { ...base, kind: today.kind, fallback };
+}
 
 /** A starting week, spreading the person's current plan across the days. */
 export function defaultWeek(profile) {
@@ -46,6 +79,8 @@ function nextWorkout(profile, today) {
  */
 export function todayPlan(state, now) {
   const { profile, workouts } = state;
+  const status = trackStatus(profile, now);
+  if (status) return planOnTrack(state, status, now);
   if (!isOn(profile)) return { kind: 'rotation' };
   const date = new Date(now);
   const today = date.getDay();
@@ -57,7 +92,9 @@ export function todayPlan(state, now) {
 }
 
 /** How many workouts a week the person is aiming for. */
-export function weeklyTarget(profile) {
+export function weeklyTarget(profile, now = Date.now()) {
+  const status = trackStatus(profile, now);
+  if (status) return trackWeekCount(status.week) || profile.daysPerWeek;
   if (!isOn(profile)) return profile.daysPerWeek;
   const choices = templateChoices(profile);
   const count = ALL_DAYS.filter((day) => templateForDay(profile, day, choices)).length;

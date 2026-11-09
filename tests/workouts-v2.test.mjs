@@ -360,6 +360,6 @@ for (const move of [...WARMUP_MOVES, ...COOLDOWN_MOVES]) {
 }
 
 test('every exercise is still present', () => {
-  assert.equal(EXERCISES.length, 27);
+  assert.equal(EXERCISES.length, 69);
   assert.equal(currentStep(startSession(ready(), NOW).active).setIndex, 0);
 });

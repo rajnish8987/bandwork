@@ -7,15 +7,18 @@ import { EXERCISES, exerciseById, isAvailable } from '../core/exercises.js';
 import { LANGUAGES, t } from '../core/i18n.js';
 import { balanceWarnings, MUSCLES, newRecords, personalRecords, weeklyMuscleSets, weekStreak } from '../core/insights.js';
 import { programStatus, sessionSettings } from '../core/programs.js';
-import { bandName, labelFor, loadOf, prescribe, suggestBand } from '../core/progression.js';
+import { bandName, holdRange, labelFor, loadOf, prescribe, prescribeScheme, suggestBand } from '../core/progression.js';
 import { comebackLevel, lighterWeekStatus } from '../core/recovery.js';
 import { sessionMinutes } from '../core/session.js';
 import { describeSetup } from '../core/setup.js';
 import { todayPlan, weeklyTarget } from '../core/schedule.js';
+import { specialForWeek } from '../core/specials.js';
+import { METHOD_NOTES } from '../core/track.js';
 import { exerciseSeries, loggedExerciseIds, sessionsThisWeek, weeklyCounts, workoutSummary } from '../core/stats.js';
 import { formatLoad, toUnit } from '../core/units.js';
 import { APP_NAME, APP_VERSION, CREDITS } from '../core/version.js';
-import { bandFill, dayName, esc, longDate, plural, safeColor, shortDate } from './html.js';
+import { amount, bandFill, dayName, esc, longDate, plural, safeColor, shortDate } from './html.js';
+import { exerciseMoments } from './specials-screen.js';
 import { howTo, videoBlock } from './workout-screens.js';
 
 const GROUPS = () => [
@@ -46,6 +49,10 @@ export function credits() {
     <p class="credit-links"><a href="${CREDITS.linkedin}" target="_blank" rel="noopener">LinkedIn</a> <a href="${CREDITS.github}" target="_blank" rel="noopener">GitHub</a></p>
     <p>${esc(APP_NAME)} ${esc(APP_VERSION)}. © ${CREDITS.year} ${esc(CREDITS.owner)}. ${esc(t('All rights reserved.'))}</p>
   </footer>`;
+}
+
+function brand() {
+  return `<div class="brand"><img src="icons/icon-192.png" alt="" width="44" height="44"><span>${esc(APP_NAME)}</span></div>`;
 }
 
 export function watermark() {
@@ -95,7 +102,7 @@ function moreChoices(profile) {
 }
 
 export function nav(route) {
-  const tabs = [['today', t('Today')], ['progress', t('Progress')], ['exercises', t('Exercises')], ['guide', t('Guide')], ['settings', t('Settings')]];
+  const tabs = [['today', t('Today')], ['progress', t('Progress')], ['exercises', t('Exercises')], ['specials', t('Specials')], ['guide', t('Guide')], ['settings', t('Settings')]];
   return `<nav class="tabs" aria-label="${esc(t('Main'))}">
     ${tabs.map(([id, label]) => `<a href="#/${id}" ${route === id ? 'aria-current="page"' : ''}>${esc(label)}</a>`).join('')}
   </nav>`;
@@ -176,6 +183,7 @@ function formMessage(message) {
 export function setupScreen({ state, message }) {
   const { profile } = state;
   return `<main class="page setup">
+    ${brand()}
     <h1 class="display" tabindex="-1">${esc(t('Set up your bands'))}</h1>
     <p class="lead">${esc(t('Your plan is built from the bands you own. All of it stays on this device.'))}</p>
     ${languageChoice(profile)}
@@ -251,16 +259,40 @@ function customList(profile) {
   </section>`;
 }
 
+/** One exercise's plan for the Today list. */
+function rowPlan(entry, exercise, session, profile) {
+  const { range } = session;
+  const sets = plural(entry.targetSets, 'set');
+  const band = labelFor(entry.target.bandIds, profile.bands);
+  if (exercise.timed) {
+    const hold = holdRange(range);
+    return t('{sets} of {min}–{max} seconds', { sets, min: hold.min, max: hold.max });
+  }
+  if (session.scheme) {
+    const reps = session.scheme.slice(0, entry.targetSets).join(', ');
+    if (exercise.bodyweight) return t('{sets}: {reps}, no band', { sets, reps });
+    return exercise.perSide ? t('{sets}: {reps} each side on {band}', { sets, reps, band }) : t('{sets}: {reps} on {band}', { sets, reps, band });
+  }
+  const values = { sets, min: range.min, max: range.max, band };
+  if (exercise.bodyweight) return t('{sets} of {min}–{max}, no band', values);
+  return exercise.perSide ? t('{sets} of {min}–{max} each side on {band}', values) : t('{sets} of {min}–{max} on {band}', values);
+}
+
+function trackExtras(program, plan) {
+  if (!plan?.track) return '';
+  const video = specialForWeek(program.week);
+  return `${plan.method && plan.kind === 'workout' ? `<p class="hint method-note">${esc(t(METHOD_NOTES[plan.method]))}</p>` : ''}
+    ${video ? `<a class="plain-link" href="#/specials/special-${esc(video.id)}">${esc(t('Watch this week\'s video'))}</a>` : ''}`;
+}
+
 export function todayScreen({ state, preview, now, message }) {
   const { profile, workouts, active } = state;
   const session = active ?? preview;
-  const range = session.range;
   const rows = session.exercises.map((e) => {
     const ex = exerciseById(e.exerciseId);
     const colors = e.target.bandIds.map((id) => profile.bands.find((b) => b.id === id)?.color).filter(Boolean);
     const status = e.sets.length >= e.targetSets ? t('Done') : e.skipped ? t('Skipped') : e.sets.length ? t('{done} of {total} sets done', { done: e.sets.length, total: e.targetSets }) : null;
-    const values = { sets: plural(e.targetSets, 'set'), min: range.min, max: range.max, band: labelFor(e.target.bandIds, profile.bands) };
-    const plan = ex.perSide ? t('{sets} of {min}–{max} each side on {band}', values) : t('{sets} of {min}–{max} on {band}', values);
+    const plan = rowPlan(e, ex, session, profile);
     return `<li>
       <a class="ladder-row" href="#/exercises/${esc(ex.id)}">
         <span class="stripe" style="background:${bandFill(colors)}"></span>
@@ -273,19 +305,23 @@ export function todayScreen({ state, preview, now, message }) {
   }).join('');
   const anchorNeeded = session.exercises.some((e) => exerciseById(e.exerciseId).anchor);
   const program = programStatus(profile, now);
-  const target = weeklyTarget(profile);
+  const target = weeklyTarget(profile, now);
   const plan = active ? null : todayPlan(state, now);
-  const offToday = plan?.kind === 'rest' || plan?.kind === 'done';
+  const offToday = plan?.kind === 'rest' || plan?.kind === 'done' || plan?.kind === 'cardio';
+  const offTitle = { rest: t('Rest day'), done: t('Done for today'), cardio: t('Cardio day') };
   const nextLine = plan?.next
     ? t('Your next workout is {name} on {day}.', { name: t(plan.next.name), day: dayName(plan.next.day) })
     : t('No workouts are scheduled.');
   const hero = offToday
-    ? `<h1 class="display huge" tabindex="-1">${esc(plan.kind === 'rest' ? t('Rest day') : t('Done for today'))}</h1>
+    ? `<h1 class="display huge" tabindex="-1">${esc(offTitle[plan.kind])}</h1>
+      ${plan.kind === 'cardio' ? `<p class="lead">${esc(t('Walk, jog or run for 20 to 25 minutes, at a pace you enjoy.'))}</p>` : ''}
       <p class="lead">${esc(nextLine)}</p>
+      ${trackExtras(program, plan)}
       <a class="secondary hero-second" href="#/workout" data-action="start-workout">${esc(t('Train anyway'))}</a>`
     : `<p class="eyebrowless">${esc(active ? t('In progress') : t('Next workout'))}</p>
       <h1 class="display huge" tabindex="-1">${esc(t(session.name))}</h1>
       <p class="lead">${esc(t('{count}, about {minutes} minutes', { count: plural(session.exercises.length, 'exercise'), minutes: sessionMinutes(session) }))}</p>
+      ${trackExtras(program, plan)}
       <a class="primary" href="#/workout" data-action="${active ? 'resume-workout' : 'start-workout'}">${esc(active ? t('Resume workout') : t('Start workout'))}</a>
       ${active ? '' : `<button type="button" class="secondary hero-second" data-action="start-quick">${esc(t('Only 10 minutes today'))}</button>`}
       <p class="hint safety">${esc(t('Check your bands for nicks or cracks first, and replace a damaged band.'))}${anchorNeeded ? ` ${esc(t('Test the door anchor with a firm pull.'))}` : ''} ${esc(t('Stop if anything hurts.'))}</p>`;
@@ -335,12 +371,12 @@ function bandRuns(points) {
   return runs;
 }
 
-function exerciseChart(series, range, selected, unit) {
+function exerciseChart(series, range, selected, unit, exercise) {
   const recent = series.slice(-12);
   const top = Math.max(range.max, ...recent.map((p) => p.reps));
   const point = recent[selected] ?? recent.at(-1);
   const bandChanged = (i) => i === 0 || recent[i].label !== recent[i - 1].label;
-  const describe = (p) => t('{date}: {reps} on {band}', { date: shortDate(p.at), reps: plural(p.reps, 'rep'), band: p.label });
+  const describe = (p) => t('{date}: {reps} on {band}', { date: shortDate(p.at), reps: amount(exercise, p.reps), band: p.label });
   const bars = recent.map((p, i) => {
     const show = bandChanged(i) || i === recent.length - 1;
     return `<button type="button" class="bar" data-action="chart-point" data-i="${i}" style="--h:${(p.reps / top) * 100}%;--fill:${bandFill(p.colors)}" aria-label="${esc(describe(p))}" ${i === (selected ?? recent.length - 1) ? 'aria-pressed="true"' : 'aria-pressed="false"'}>
@@ -363,7 +399,7 @@ function exerciseChart(series, range, selected, unit) {
     <div class="band-runs" aria-hidden="true">${bandRuns(recent).map((run) => `<span style="flex-grow:${run.count}">${esc(run.label)}</span>`).join('')}</div>
     <div class="chart-axis"><span>${esc(shortDate(recent[0].at))}</span><span>${esc(shortDate(recent.at(-1).at))}</span></div>
     ${legend}
-    <p class="readout" role="status">${esc(t('{date}: best set {reps} on {band} ({load})', { date: longDate(point.at), reps: plural(point.reps, 'rep'), band: point.label, load: formatLoad(point.kg, unit) }))}${pointSetup ? `. ${esc(pointSetup)}` : ''}</p>
+    <p class="readout" role="status">${esc(t('{date}: best set {reps} on {band} ({load})', { date: longDate(point.at), reps: amount(exercise, point.reps), band: point.label, load: formatLoad(point.kg, unit) }))}${pointSetup ? `. ${esc(pointSetup)}` : ''}</p>
     <p class="hint">${esc(t('Bars show the best set of each session, in the colour of the band. Lines mark your rep range. Reach the top line on every set and the next session moves you to a stronger band.'))}</p>
     <details class="how">
       <summary>${esc(t('Show as a table'))}</summary>
@@ -416,7 +452,7 @@ function recordsSection(workouts, unit) {
     <h2>${esc(t('Personal records'))}</h2>
     <ul class="history">${records.map((r) => `<li class="history-row">
       <div><strong>${esc(t(exerciseById(r.exerciseId)?.name ?? r.exerciseId))}</strong>
-      <small>${esc(t('{reps} on {band} ({load}), {date}', { reps: plural(r.reps, 'rep'), band: r.label, load: formatLoad(r.kg, unit), date: shortDate(r.at) }))}</small></div>
+      <small>${esc(t('{reps} on {band} ({load}), {date}', { reps: amount(exerciseById(r.exerciseId), r.reps), band: r.label, load: formatLoad(r.kg, unit), date: shortDate(r.at) }))}</small></div>
     </li>`).join('')}</ul>
   </section>`;
 }
@@ -455,7 +491,7 @@ export function progressScreen({ state, now, chartExercise, chartPoint }) {
           ${ids.map((id) => `<option value="${esc(id)}" ${id === current ? 'selected' : ''}>${esc(name(id))}</option>`).join('')}
         </select>
       </label>
-      ${exerciseChart(series, sessionSettings(profile, now).range, chartPoint, profile.unit)}
+      ${exerciseChart(series, sessionSettings(profile, now, exerciseById(current)).range, chartPoint, profile.unit)}
     </section>
     ${recordsSection(workouts, profile.unit)}
     <section>
@@ -498,21 +534,23 @@ export function exerciseScreen({ state, id }) {
   if (e.anchor) notes.push(t('Needs a door anchor'));
   if (e.mini) notes.push(t('Needs a mini loop'));
   if (e.perSide) notes.push(t('Done on each side'));
+  if (e.bodyweight) notes.push(t('No band needed'));
   return `<main class="page exercise" style="--band:${safeColor(band?.color)}">
     <a class="back" href="#/exercises" data-action="go-back">${esc(t('Back'))}</a>
     <h1 class="display" tabindex="-1">${esc(t(e.name))}</h1>
     <p class="lead">${esc(notes.join('. '))}.</p>
     <div class="exercise-figure" data-figure="${esc(e.id)}"></div>
     <button type="button" class="secondary try-camera" data-action="camera-practice" data-id="${esc(e.id)}">${esc(t('Try Camera coach'))}</button>
-    <section>
+    ${e.bodyweight ? '' : `<section>
       <h2>${esc(t('Suggested band'))}</h2>
       <ul class="suggestions">${LEVELS().map(([level, label]) => `<li class="${level === state.profile.level ? 'your-level' : ''}"><small>${esc(label)}${level === state.profile.level ? ` (${esc(t('your level'))})` : ''}</small><span class="suggestion-band">${bandChips(suggestBand(e, state.profile.bands, level).bandIds, state.profile.bands, state.profile.unit)}</span></li>`).join('')}</ul>
-    </section>
+    </section>`}
     <section class="how-open">
       <h2>${esc(t('How to do it'))}</h2>
       ${howTo(e)}
       ${videoBlock(e, state.profile)}
     </section>
+    ${exerciseMoments(e.id)}
   </main>`;
 }
 
@@ -524,14 +562,15 @@ export function summaryScreen({ state, workout, now }) {
   const rows = workout.exercises.map((entry) => {
     const ex = exerciseById(entry.exerciseId);
     const history = upToThis.flatMap((w) => w.exercises.filter((x) => x.exerciseId === entry.exerciseId && x.sets.length));
-    const next = ex && history.length ? prescribe(ex, history, profile.bands, range) : null;
+    let next = null;
+    if (ex && history.length) next = workout.scheme ? prescribeScheme(ex, history, profile.bands, workout.scheme, profile.level) : prescribe(ex, history, profile.bands, range);
     const reps = entry.sets.map((set) => set.reps).join(', ');
     const last = entry.sets.at(-1);
     return `<li class="summary-row">
       <span class="stripe" style="background:${bandFill(last.colors)}"></span>
       <div>
         <strong>${esc(t(ex?.name ?? entry.exerciseId))}</strong>
-        <small>${esc(t('{band}: {reps} reps', { band: last.label, reps }))}</small>
+        <small>${esc(ex?.timed ? t('{band}: {reps} seconds', { band: last.label, reps }) : t('{band}: {reps} reps', { band: last.label, reps }))}</small>
         ${next ? `<small class="next-time">${esc(t('Next time: {note}', { note: next.note }))}</small>` : ''}
       </div>
     </li>`;
@@ -542,7 +581,7 @@ export function summaryScreen({ state, workout, now }) {
     <p class="lead">${esc(t('{name}: {sets}, {reps}, {minutes}.', { name: t(workout.name), sets: plural(s.sets, 'set'), reps: plural(s.reps, 'rep'), minutes: plural(s.minutes, 'minute') }))}</p>
     ${records.length ? `<section class="records-new">
       <h2>${esc(records.length === 1 ? t('New record') : t('New records'))}</h2>
-      <ul>${records.map((r) => `<li><strong>${esc(t(exerciseById(r.exerciseId)?.name ?? r.exerciseId))}</strong>: ${esc(t('{reps} on {band} ({load})', { reps: plural(r.reps, 'rep'), band: r.label, load: formatLoad(r.kg, profile.unit) }))}</li>`).join('')}</ul>
+      <ul>${records.map((r) => `<li><strong>${esc(t(exerciseById(r.exerciseId)?.name ?? r.exerciseId))}</strong>: ${esc(t('{reps} on {band} ({load})', { reps: amount(exerciseById(r.exerciseId), r.reps), band: r.label, load: formatLoad(r.kg, profile.unit) }))}</li>`).join('')}</ul>
     </section>` : ''}
     ${weekMeter(sessionsThisWeek(workouts, now), weeklyTarget(profile))}
     ${streakLine(workouts, weeklyTarget(profile), now)}
@@ -564,14 +603,16 @@ function remindersSection(profile, native) {
     <label class="select-field">${esc(t('What time?'))}
       <input type="time" id="reminder-time" data-reminder-time value="${esc(time)}">
     </label>
+    <p id="reminder-message" class="message" role="status" hidden></p>
     ${native
-    ? `<p class="hint">${esc(t('Your phone will notify you at this time on the days you choose.'))}</p>`
+    ? `<p class="hint">${esc(t('Your phone will notify you at this time on the days you choose. To save battery, Android can deliver a reminder some minutes late.'))}</p>
+       <button type="button" class="secondary small" data-action="reminder-exact" ${days.length ? '' : 'disabled'}>${esc(t('Get reminders exactly on time'))}</button>`
     : `<p class="hint">${esc(t('Add these to your calendar, and your calendar will remind you. A browser cannot send reminders while it is closed.'))}</p>
        <button type="button" class="secondary" data-action="reminder-calendar" ${days.length ? '' : 'disabled'}>${esc(t('Add to my calendar'))}</button>`}
   </section>`;
 }
 
-export function settingsScreen({ state, message, canInstall, secure, native }) {
+export function settingsScreen({ state, message, dataMessage, canInstall, secure, native }) {
   const { profile, workouts } = state;
   return `<main class="page settings">
     <h1 class="display" tabindex="-1">${esc(t('Settings'))}</h1>
@@ -622,6 +663,7 @@ export function settingsScreen({ state, message, canInstall, secure, native }) {
     </section>
     <section>
       <h2>${esc(t('About'))}</h2>
+      ${brand()}
       <p>${esc(APP_NAME)} ${esc(t('version {version}', { version: APP_VERSION }))}</p>
       <p class="hint">${esc(t('The web app and the Android app are built from the same code, so a matching version number means matching features.'))}</p>
       <p class="hint">${esc(t('Exercise videos belong to their YouTube channels.'))}</p>
@@ -637,6 +679,7 @@ export function settingsScreen({ state, message, canInstall, secure, native }) {
           <input type="file" id="import-file" accept="application/json,.json" data-action-change="import">
         </label>
       </div>
+      ${dataMessage ? `<p class="message ${dataMessage.kind}" role="status">${esc(dataMessage.text)}</p>` : ''}
       <button type="button" class="text-button danger" data-action="reset">${esc(t('Erase everything on this device'))}</button>
     </section>
   </main>`;

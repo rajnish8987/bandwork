@@ -23,6 +23,11 @@ export function longDate(time) {
 
 export const plural = tPlural;
 
+/** How much of a set: reps, or seconds for a hold. */
+export function amount(exercise, reps) {
+  return exercise?.timed ? t('{seconds} seconds', { seconds: reps }) : plural(reps, 'rep');
+}
+
 /** A full day name. Days use 0 for Sunday. */
 export function dayName(day) {
   return [t('Sunday'), t('Monday'), t('Tuesday'), t('Wednesday'), t('Thursday'), t('Friday'), t('Saturday')][day];
