@@ -129,7 +129,8 @@ icon at the right of the Chrome or Edge address bar.
    **Install Tensile** in the app's Settings does the same.
 
 It then opens from your home screen like any other app and works with no connection.
-Updates download in the background and appear the next time you open it.
+Updates download in the background when you open it, then the app reopens itself on the
+new version. Your saved data stays, and a workout in progress can be resumed from Today.
 
 The laptop can use the same address, instead of running anything locally. Each
 device keeps its own data.

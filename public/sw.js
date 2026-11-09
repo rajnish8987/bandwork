@@ -1,8 +1,8 @@
 // Stores the app on the device so it works with no connection. Files open from
-// the store straight away and refresh in the background, so an update shows on
-// the next launch.
+// the store straight away. A new version downloads in the background and reopens
+// the page once it has all arrived.
 
-const CACHE = 'tensile-v11';
+const CACHE = 'tensile-v12';
 
 // This address can hold other sites, and they share one list of stores. Only this app's
 // own old copies are cleared.
@@ -86,30 +86,51 @@ const FILES = [
   './fonts/big-shoulders-display-latin-800-normal.woff2',
 ];
 
+// Browsers may reuse a file for ten minutes without asking the server. A new version filled
+// from there would be the old one under a new name, or worse, part old and part new.
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(FILES)).then(() => self.skipWaiting()));
+  const fresh = FILES.map((file) => new Request(file, { cache: 'reload' }));
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(fresh)).then(() => self.skipWaiting()));
 });
 
+const HOME = new URL('./', self.location);
+const APP_PATHS = [HOME.pathname, `${HOME.pathname}index.html`];
+
+// A page still running the old version would load its camera screens from the new one, and the
+// two do not fit together. Going home with no address fragment always reloads the page; the
+// same address with a fragment would not.
+async function reopenPages() {
+  const pages = await self.clients.matchAll({ type: 'window' });
+  await Promise.all(pages.map((page) => page.navigate(HOME.href).catch(() => {})));
+}
+
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => OWN_COPY.test(k) && k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim()),
-  );
+  const done = (async () => {
+    const old = (await caches.keys()).filter((k) => OWN_COPY.test(k) && k !== CACHE);
+    await Promise.all(old.map((k) => caches.delete(k)));
+    await self.clients.claim();
+    return old.length > 0;
+  })();
+  event.waitUntil(done);
+  // Kept out of waitUntil: a page opening waits for this worker to finish activating.
+  done.then((updated) => (updated ? reopenPages() : undefined));
 });
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
+  const url = new URL(request.url);
+  if (request.method !== 'GET' || url.origin !== self.location.origin) return;
+
+  // Any other page address is a file someone opened directly. The browser shows it, and it is
+  // not stored. The app would not work there, as its links are relative to its home.
+  const isPage = request.mode === 'navigate';
+  if (isPage && !APP_PATHS.includes(url.pathname)) return;
 
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
-    // Every page opens the app, so a page's refresh must fetch the app. Fetching the address
-    // itself would store whatever file it names as the app.
-    const isPage = request.mode === 'navigate';
     const key = isPage ? './index.html' : request;
     const stored = await cache.match(key, { ignoreSearch: isPage });
-    const refresh = fetch(key).then((response) => {
+    const refresh = fetch(key, { cache: 'no-cache' }).then((response) => {
       if (response.ok && response.type === 'basic') cache.put(key, response.clone());
       return response;
     });
