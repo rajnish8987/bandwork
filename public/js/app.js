@@ -1,5 +1,5 @@
 import { summariseReadings } from './core/bandcare.js';
-import { restAnnouncement, setAnnouncement, tempoAt, TEMPOS } from './core/coach.js';
+import { HOLD_TEMPO, restAnnouncement, setAnnouncement, tempoAt, TEMPOS } from './core/coach.js';
 import { BAND_COLORS } from './core/color.js';
 import { exerciseById } from './core/exercises.js';
 import { localeTag, pickLanguage, setLanguage, t } from './core/i18n.js';
@@ -10,12 +10,15 @@ import { supportsRepCount } from './core/repcount.js';
 import { cooldownFor, warmupFor } from './core/routines.js';
 import { defaultWeek } from './core/schedule.js';
 import {
-  addRest, currentStep, finishSession, logSet, setEntrySetup, skipExercise, skipRest, startSession, swapInSession, undoLastSet,
+  addRest, currentStep, finishSession, logSet, plannedReps, setEntrySetup, skipExercise, skipRest, startSession, swapInSession, undoLastSet,
 } from './core/session.js';
 import { describeSetup } from './core/setup.js';
 import { defaultState, loadState, makeBackup, newBand, newId, parseBackup, saveState, STANDARD_TENSIONS } from './core/store.js';
 import { formatLoad, fromUnit, toUnit } from './core/units.js';
+import { weekStart } from './core/stats.js';
+import { TRACK_ID, trackStartFor } from './core/track.js';
 import { embedUrl, parseYouTubeId, videoFor } from './core/videos.js';
+import { specialsScreen } from './ui/specials-screen.js';
 import {
   bandsScreen, builderEditScreen, builderListScreen, guideScreen, measureScreen, programsScreen, scheduleScreen,
 } from './ui/extra-screens.js';
@@ -26,7 +29,7 @@ import {
   credits, exerciseScreen, libraryScreen, nav, progressScreen, settingsScreen, setupScreen, startingBands, summaryScreen, todayScreen, watermark,
 } from './ui/screens.js';
 import { canSpeak, speak, stopSpeaking } from './ui/voice.js';
-import { fieldColors, restScreen, routineScreen, setScreen } from './ui/workout-screens.js';
+import { goalText, setOfText, fieldColors, restScreen, routineScreen, setScreen } from './ui/workout-screens.js';
 
 const root = document.getElementById('app');
 const REP_LIMIT = 200;
@@ -86,7 +89,7 @@ function take(key) {
 }
 
 const say = (text) => {
-  if (state.profile.voice) speak(text);
+  if (state.profile.voice || ui.handsFree) speak(text); // in hands-free mode, sound is the whole interface
 };
 
 /* ---------- Starting a workout, warm-up and cool-down ---------- */
@@ -176,7 +179,7 @@ function draftFor(step) {
   const previous = entry.sets.at(-1);
   ui.draft = {
     key,
-    reps: entry.target.repsGoal,
+    reps: plannedReps(state.active, step),
     bandIds: owned(previous ? previous.bandIds : entry.target.bandIds),
     effort: null,
   };
@@ -266,6 +269,7 @@ function announceSet() {
     reps: ui.draft.reps,
     band: labelFor(ui.draft.bandIds, state.profile.bands),
     perSide: exercise.perSide,
+    timed: exercise.timed,
   }));
 }
 
@@ -288,6 +292,12 @@ function applyDraftToScreen() {
 
 /* ---------- The rep count ---------- */
 
+function tempoLabel() {
+  const step = state.active && currentStep(state.active);
+  const exercise = step && exerciseById(state.active.exercises[step.exIndex].exerciseId);
+  return exercise?.timed ? t('Count seconds for me') : t('Count reps for me');
+}
+
 function stopTempo() {
   if (!tempo) return;
   clearInterval(tempo.timer);
@@ -306,7 +316,7 @@ function finishTempo(reps, message) {
   if (reps > 0) ui.draft.reps = reps;
   applyDraftToScreen();
   const button = document.getElementById('tempo-button');
-  if (button) button.textContent = t('Count reps for me');
+  if (button) button.textContent = tempoLabel();
   setTempoText(message);
   say(message);
 }
@@ -328,7 +338,13 @@ function tickTempo() {
   if (reps && now.phase !== 'done') reps.textContent = now.completed;
 
   if (now.phase === 'done') {
-    finishTempo(tempo.options.reps, t('Done. Log your set.'));
+    const { onDone, options: { reps: planned } } = tempo;
+    if (onDone) {
+      stopTempo();
+      onDone(planned);
+      return;
+    }
+    finishTempo(planned, t('Done. Log your set.'));
     return;
   }
   if (now.phase === 'ready') say(t('Get ready'));
@@ -340,19 +356,23 @@ function tickTempo() {
   }
 }
 
-function startTempo() {
+function startTempo({ leadInSeconds, onDone } = {}) {
   unlockSound();
   const step = currentStep(state.active);
   const exercise = exerciseById(state.active.exercises[step.exIndex].exerciseId);
-  const speed = TEMPOS[state.profile.tempo] ?? TEMPOS.steady;
+  let speed = TEMPOS[state.profile.tempo] ?? TEMPOS.steady;
+  if (state.active.method === 'negative') speed = TEMPOS.negative;
+  if (exercise.timed) speed = HOLD_TEMPO;
   tempo = {
     startedAt: Date.now(),
-    options: { reps: ui.draft.reps, upSeconds: speed.up, downSeconds: speed.down, perSide: exercise.perSide },
+    options: { reps: ui.draft.reps, upSeconds: speed.up, downSeconds: speed.down, perSide: exercise.perSide, leadInSeconds },
+    onDone,
     key: null,
     latest: null,
     timer: setInterval(tickTempo, 100),
   };
-  document.getElementById('tempo-button').textContent = t('Stop counting');
+  const button = document.getElementById('tempo-button');
+  if (button) button.textContent = t('Stop counting');
   tickTempo();
 }
 
@@ -389,6 +409,67 @@ function openDialog({ title, body, actions: buttons }) {
 }
 
 /** Opens the camera coach, or explains why it cannot run here. Returns whether it opened. */
+const CUE_SPEECH_MS = 3500;
+
+/** The set in progress, in the words hands-free mode needs. Null once the workout has ended. */
+function handsFreeView() {
+  const { active, profile } = state;
+  const step = active && currentStep(active);
+  if (!step) return null;
+  const entry = active.exercises[step.exIndex];
+  const exercise = exerciseById(entry.exerciseId);
+  const draft = draftFor(step);
+  const restLeft = active.restEndsAt ? active.restEndsAt - Date.now() : 0;
+  return {
+    step,
+    exercise,
+    target: draft.reps,
+    slowNegatives: active.method === 'negative',
+    resting: restLeft > 0,
+    restSeconds: Math.max(0, Math.ceil(restLeft / 1000)),
+    setText: setOfText(active, step.setIndex + 1, entry.targetSets),
+    goal: goalText(exercise, active, step, entry),
+    bandText: exercise.bodyweight ? t('No band needed') : labelFor(draft.bandIds, profile.bands),
+  };
+}
+
+async function startHandsFree() {
+  const usable = (window.isSecureContext || isNative()) && navigator.mediaDevices?.getUserMedia;
+  if (!usable) {
+    openDialog({
+      title: t('Hands-free'),
+      body: t('The camera only works in the Android app or at a secure address, because browsers block it anywhere else.'),
+      actions: [{ label: t('Keep going'), kind: 'primary' }],
+    });
+    return;
+  }
+  const { openHandsFree } = await import('./ui/handsfree.js');
+  unlockSound();
+  stopTempo();
+  ui.handsFree = true;
+  openHandsFree({
+    view: handsFreeView,
+    finishSet: (reps) => {
+      ui.draft.reps = Math.min(REP_LIMIT, reps);
+      actions['done-set']();
+    },
+    skipRest: () => actions['skip-rest'](),
+    countAlong: (onDone) => startTempo({ leadInSeconds: 0, onDone }),
+    stopCounting: stopTempo,
+    say,
+    beep: () => { if (state.profile.sound) tempoBeep(true); },
+    announce: () => {
+      if (state.active?.restEndsAt) return;
+      ui.announced = null;
+      announceSet();
+    },
+    onClose: () => {
+      ui.handsFree = false;
+      if (parseRoute().name === 'workout') render();
+    },
+  });
+}
+
 async function startCamera(exercise, callbacks) {
   const usable = (window.isSecureContext || isNative()) && navigator.mediaDevices?.getUserMedia;
   if (!usable) {
@@ -409,13 +490,16 @@ async function startCamera(exercise, callbacks) {
   }
   const { openCamera } = await import('./ui/camera.js');
   unlockSound();
+  let cueUntil = 0;
   openCamera({
     exercise,
+    slowNegatives: state.active?.method === 'negative',
     onCount: (count) => {
       if (state.profile.sound) tempoBeep(true);
-      say(String(count));
+      if (performance.now() >= cueUntil) say(String(count)); // never talk over a correction
     },
-    onCue: (text) => say(text),
+    // Spoken even with Voice off: from across the room, this is the only way to hear a correction.
+    onCue: (text) => { cueUntil = performance.now() + CUE_SPEECH_MS; speak(text); },
     ...callbacks,
   });
 }
@@ -472,26 +556,49 @@ function openOwnVideoDialog(exerciseId) {
   dialog.showModal();
 }
 
+function videoFrame(name, src) {
+  const frame = document.createElement('iframe');
+  frame.className = 'video-player';
+  frame.title = t('Video: {name}', { name });
+  frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+  frame.allowFullscreen = true;
+  frame.referrerPolicy = 'strict-origin-when-cross-origin'; // YouTube refuses to play without this
+  frame.src = src;
+  return frame;
+}
+
+function showOffline(status) {
+  status.textContent = t('Video needs an internet connection. The animated figure works offline.');
+  status.hidden = false;
+}
+
 function playVideo(button) {
   const box = button.closest('.video');
   const status = box.querySelector('.video-status');
   if (!navigator.onLine) {
-    status.textContent = t('Video needs an internet connection. The animated figure works offline.');
-    status.hidden = false;
+    showOffline(status);
     return;
   }
   const { exercise: exerciseId } = box.dataset;
   const video = videoFor(exerciseId, state.profile);
   if (!video) return;
-  const frame = document.createElement('iframe');
-  frame.className = 'video-player';
-  frame.title = t('Video: {name}', { name: t(exerciseById(exerciseId).name) });
-  frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
-  frame.allowFullscreen = true;
-  frame.referrerPolicy = 'strict-origin-when-cross-origin'; // YouTube refuses to play without this
-  frame.src = embedUrl(video.id);
   status.hidden = true;
-  button.replaceWith(frame);
+  button.replaceWith(videoFrame(t(exerciseById(exerciseId).name), embedUrl(video.id, video.at)));
+}
+
+/** Plays a special inside its own card, from the chosen moment. */
+function playSpecial(button) {
+  const card = button.closest('.special-card');
+  const status = card.querySelector('.video-status');
+  if (!navigator.onLine) {
+    showOffline(status);
+    return;
+  }
+  const { video, at, title } = button.dataset;
+  const player = card.querySelector('[data-player]');
+  status.hidden = true;
+  player.replaceChildren(videoFrame(title, embedUrl(video, Number(at))));
+  player.scrollIntoView({ block: 'nearest' });
 }
 
 function openSwapDialog(exIndex) {
@@ -521,21 +628,39 @@ async function downloadBackup() {
   const filename = `tensile-backup-${new Date().toISOString().slice(0, 10)}.json`;
   try {
     await saveTextFile(filename, makeBackup(state), 'application/json');
-    ui.message = { kind: 'ok', text: isNative() ? t('Backup ready: {file}.', { file: filename }) : t('Saved {file} to your downloads.', { file: filename }) };
+    ui.dataMessage = { kind: 'ok', text: isNative() ? t('Backup ready: {file}.', { file: filename }) : t('Saved {file} to your downloads.', { file: filename }) };
   } catch {
     // Closing Android's share sheet without choosing also lands here.
-    ui.message = { kind: 'error', text: t('The backup was not saved. Try again if you still need it.') };
+    ui.dataMessage = { kind: 'error', text: t('The backup was not saved. Try again if you still need it.') };
   }
   render();
 }
 
+function showReminderMessage(text, kind = 'error') {
+  const box = document.getElementById('reminder-message');
+  if (!box) return;
+  box.textContent = text;
+  box.className = `message ${kind}`;
+  box.hidden = !text;
+}
+
 function syncNativeReminders() {
   if (!isNative()) return;
+  const { days, exact: wantedExact } = state.profile.reminders;
   applyNativeReminders(state.profile.reminders)
-    .then((allowed) => {
-      if (!allowed) showFormMessage(t('Notifications are off for Tensile. Allow them in your phone settings to get reminders.'));
+    .then(({ allowed, exact }) => {
+      if (!allowed) {
+        showReminderMessage(t('Notifications are off for Tensile. Allow them in your phone settings to get reminders.'));
+        return;
+      }
+      if (wantedExact && !exact && days.length) {
+        editProfile((profile) => { profile.reminders.exact = false; }); // do not ask again on every change
+        showReminderMessage(t('Exact timing is off, so a reminder may come some minutes late.'), 'ok');
+        return;
+      }
+      showReminderMessage(days.length ? t('Reminders are set.') : '', 'ok');
     })
-    .catch(() => showFormMessage(t('Reminders could not be set on this phone.')));
+    .catch(() => showReminderMessage(t('Reminders could not be set on this phone.')));
 }
 
 async function importBackup(input) {
@@ -563,7 +688,7 @@ async function importBackup(input) {
       ],
     });
   } catch (err) {
-    ui.message = { kind: 'error', text: t(err.message) };
+    ui.dataMessage = { kind: 'error', text: t(err.message) };
     render();
   }
 }
@@ -676,6 +801,7 @@ const actions = {
       stopSpeaking();
     }
   },
+  'hands-free': () => startHandsFree(),
   'camera-open': () => {
     const step = currentStep(state.active);
     startCamera(exerciseById(state.active.exercises[step.exIndex].exerciseId), {
@@ -698,8 +824,9 @@ const actions = {
     if (!step) return finishWorkout();
     restTotal = state.active.range.rest * 1000;
     ui.restWarned = false;
+    const rests = Boolean(state.active.restEndsAt); // a circuit goes straight to the next exercise
     render();
-    say(restAnnouncement({
+    if (rests) say(restAnnouncement({
       seconds: state.active.range.rest,
       nextName: exerciseById(state.active.exercises[step.exIndex].exerciseId).name,
       isNewExercise: step.setIndex === 0,
@@ -806,6 +933,7 @@ const actions = {
 
   /* Videos */
   'video-play': (el) => playVideo(el),
+  'special-play': (el) => playSpecial(el),
   'video-own': (el) => openOwnVideoDialog(el.closest('.video').dataset.exercise),
   'video-reset': (el) => setOwnVideo(el.closest('.video').dataset.exercise, null),
 
@@ -868,6 +996,10 @@ const actions = {
   /* Programs */
   'program-start': (el) => {
     editProfile((profile) => { profile.program = { id: el.dataset.id, startedAt: Date.now() }; });
+    go('#/today');
+  },
+  'track-start': (el) => {
+    editProfile((profile) => { profile.program = { id: TRACK_ID, startedAt: trackStartFor(Number(el.dataset.week), weekStart(Date.now())) }; });
     go('#/today');
   },
   'program-stop': () => {
@@ -942,11 +1074,15 @@ const actions = {
   },
 
   /* Reminders */
+  'reminder-exact': () => {
+    editProfile((profile) => { profile.reminders.exact = true; });
+    syncNativeReminders();
+  },
   'reminder-calendar': async () => {
     const ics = buildIcs(state.profile.reminders, Date.now());
     if (!ics) return;
     await saveTextFile('tensile-reminders.ics', ics, 'text/calendar');
-    showFormMessage(t('Open the downloaded file to add the reminders to your calendar.'), 'ok');
+    showReminderMessage(t('Open the downloaded file to add the reminders to your calendar.'), 'ok');
   },
 
   export: downloadBackup,
@@ -987,6 +1123,7 @@ function showFormMessage(text, kind = 'error') {
   box.textContent = text;
   box.className = `message ${kind}`;
   box.hidden = !text;
+  if (text && kind === 'error') box.scrollIntoView({ block: 'nearest' }); // the field may be far below it
 }
 
 function updateProfileField(input) {
@@ -1095,8 +1232,9 @@ function updateReminders(input) {
       reminders.time = input.value;
     }
   });
-  const button = root.querySelector('[data-action="reminder-calendar"]');
-  if (button) button.disabled = !state.profile.reminders.days.length;
+  root.querySelectorAll('[data-action="reminder-calendar"], [data-action="reminder-exact"]').forEach((button) => {
+    button.disabled = !state.profile.reminders.days.length;
+  });
   syncNativeReminders();
 }
 
@@ -1184,6 +1322,7 @@ function screenFor(route) {
       return shell(settingsScreen({
         state,
         message: take('message'),
+        dataMessage: take('dataMessage'),
         canInstall: Boolean(ui.installPrompt),
         secure: window.isSecureContext || isNative(),
         native: isNative(),
@@ -1199,6 +1338,8 @@ function screenFor(route) {
       return shell(scheduleScreen({ state }));
     case 'guide':
       return shell(guideScreen());
+    case 'specials':
+      return shell(specialsScreen({ state, now }));
     case 'builder': {
       if (!route.arg) return shell(builderListScreen({ state }));
       const workout = builderWorkout();
@@ -1253,11 +1394,14 @@ function render() {
   if (changedRoute) {
     window.scrollTo(0, 0);
     root.querySelector('h1')?.focus({ preventScroll: true });
+    if (route.name === 'specials' && route.arg) document.getElementById(route.arg)?.scrollIntoView();
   } else if (focusId) {
     document.getElementById(focusId)?.focus({ preventScroll: true });
   } else if (focusAction) {
     root.querySelector(`[data-action="${focusAction}"]`)?.focus({ preventScroll: true });
   }
+  // On a long page a new message can land away from the button that caused it.
+  if (!changedRoute) root.querySelector('.message[role="status"]:not([hidden])')?.scrollIntoView({ block: 'nearest' });
   lastRoute = routeKey;
 }
 

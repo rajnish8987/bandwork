@@ -189,6 +189,7 @@ function cleanReminders(r, fallback) {
   return {
     days: Array.isArray(r.days) ? [...new Set(r.days.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))] : [],
     time: TIME.test(r.time) ? r.time : fallback.time,
+    ...(r.exact === true ? { exact: true } : {}),
   };
 }
 

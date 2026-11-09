@@ -269,6 +269,9 @@ async function still(page, name) {
   await page.getByRole('heading', { name: 'Sets per muscle, last 7 days' }).scrollIntoViewIfNeeded();
   await still(page, 'progress.jpg');
 
+  await page.goto(`${base}/#/specials`);
+  await still(page, 'specials.jpg');
+
   await page.goto(`${base}/#/programs`);
   await still(page, 'programs.jpg');
 

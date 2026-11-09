@@ -1,3 +1,5 @@
+import { exerciseById } from './exercises.js';
+
 /** Midnight on the Monday of the week containing a timestamp, in local time. */
 export function weekStart(time) {
   const d = new Date(time);
@@ -52,9 +54,10 @@ export function loggedExerciseIds(workouts) {
 
 export function workoutSummary(workout) {
   const sets = workout.exercises.flatMap((e) => e.sets);
+  const counted = workout.exercises.filter((e) => !exerciseById(e.exerciseId)?.timed).flatMap((e) => e.sets);
   return {
     sets: sets.length,
-    reps: sets.reduce((sum, s) => sum + s.reps, 0),
+    reps: counted.reduce((sum, s) => sum + s.reps, 0),
     minutes: Math.max(1, Math.round((workout.finishedAt - workout.startedAt) / 60000)),
   };
 }

@@ -2,7 +2,7 @@
 // the store straight away and refresh in the background, so an update shows on
 // the next launch.
 
-const CACHE = 'tensile-v5';
+const CACHE = 'tensile-v8';
 
 // The camera rep counter in vendor/ is too large to store up front. It is stored
 // by the fetch handler below the first time someone opens it.
@@ -18,6 +18,7 @@ const FILES = [
   './js/core/color.js',
   './js/core/exercises.js',
   './js/core/formcheck.js',
+  './js/core/handsfree.js',
   './js/core/i18n.js',
   './js/core/insights.js',
   './js/core/locales/es.js',
@@ -32,8 +33,10 @@ const FILES = [
   './js/core/schedule.js',
   './js/core/session.js',
   './js/core/setup.js',
+  './js/core/specials.js',
   './js/core/stats.js',
   './js/core/store.js',
+  './js/core/track.js',
   './js/core/units.js',
   './js/core/version.js',
   './js/core/videos.js',
@@ -42,9 +45,11 @@ const FILES = [
   './js/ui/feedback.js',
   './js/ui/figure-math.js',
   './js/ui/figure.js',
+  './js/ui/handsfree.js',
   './js/ui/html.js',
   './js/ui/native.js',
   './js/ui/screens.js',
+  './js/ui/specials-screen.js',
   './js/ui/voice.js',
   './js/ui/workout-screens.js',
   './guide/setup.jpg',
@@ -62,6 +67,7 @@ const FILES = [
   './guide/progress.jpg',
   './guide/programs.jpg',
   './guide/settings.jpg',
+  './guide/specials.jpg',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',

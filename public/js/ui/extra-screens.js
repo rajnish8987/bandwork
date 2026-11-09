@@ -10,6 +10,7 @@ import { scheduleWarnings } from '../core/schedule.js';
 import { formatLoad } from '../core/units.js';
 import { dayName, esc, plural, safeColor, shortDate } from './html.js';
 import { autoProgram, SHORT_TERM_WEEKS } from '../core/autoplan.js';
+import { TRACK, TRACK_ID } from '../core/track.js';
 
 function backLink(href, label) {
   return `<a class="back" href="${href}">${esc(label)}</a>`;
@@ -120,6 +121,18 @@ function yourPlan(profile, status) {
   </section>`;
 }
 
+function trackCard(status) {
+  const running = status?.program.id === TRACK_ID && !status.finished;
+  return `<section class="band-card">
+    <h2>${esc(t(TRACK.name))}</h2>
+    <p>${esc(t(TRACK.summary))}</p>
+    ${running ? `<p class="band-status attention">${esc(t('Week {week} of {total}', { week: status.week, total: status.totalWeeks }))}: ${esc(t(status.phase.name))}</p>
+    <button type="button" class="secondary small" data-action="program-stop">${esc(t('Stop this program'))}</button>` : ''}
+    <a class="secondary small" href="#/specials">${esc(t('Choose a level in Specials'))}</a>
+    <p class="hint">${esc(t('While it runs, it decides your days in place of your weekly schedule.'))}</p>
+  </section>`;
+}
+
 export function programsScreen({ state, now }) {
   const { profile } = state;
   const status = programStatus(profile, now);
@@ -141,6 +154,7 @@ export function programsScreen({ state, now }) {
     <h1 class="display" tabindex="-1">${esc(t('Programs'))}</h1>
     <p class="lead">${esc(t('A program sets your rep range, sets and lighter weeks for you, on the plan and days you already chose.'))}</p>
     ${yourPlan(profile, status)}
+    ${trackCard(status)}
     <h2 class="other-programs">${esc(t('Other programs'))}</h2>
     <ul class="band-cards">${cards}</ul>
   </main>`;
@@ -158,7 +172,7 @@ const picture = (name, title) => (name.endsWith('.gif')
 /** The steps of the guide. Pictures are made by tools/make-guide.mjs. */
 export const GUIDE_PICTURES = [
   'setup.jpg', 'start-workout.gif', 'start-workout.jpg', 'log-set.gif', 'log-set.jpg', 'count-reps.gif', 'count-reps.jpg',
-  'camera.gif', 'camera.jpg', 'video.jpg', 'schedule.jpg', 'measure.jpg', 'progress.jpg', 'programs.jpg', 'settings.jpg',
+  'camera.gif', 'camera.jpg', 'video.jpg', 'specials.jpg', 'schedule.jpg', 'measure.jpg', 'progress.jpg', 'programs.jpg', 'settings.jpg',
 ];
 
 export function guideScreen() {
@@ -166,15 +180,16 @@ export function guideScreen() {
     { title: t('Set up your bands'), text: t('Choose your level to see which band to start with. Check each band and its tension, then choose your goal and how long you can train. Tap Build my plan. You can change all of it later in Settings.'), image: 'setup.jpg' },
     { title: t('Start a workout'), text: t('Today shows your next workout. Tap Start workout. A short warm-up runs first, or tap Skip warm-up.'), image: 'start-workout.gif' },
     { title: t('Log each set'), text: t('Set your reps with the plus and minus buttons, tap the band you used, and choose how hard it felt. Tap Log set and the rest timer starts on its own.'), image: 'log-set.gif' },
-    { title: t('Keep your hands free'), text: t('Tap Count reps for me to hear beeps and see a count at a steady pace. Tap Voice off to turn on spoken cues.'), image: 'count-reps.gif' },
+    { title: t('Keep your hands free'), text: t('Tap Count reps for me to hear beeps and see a count at a steady pace. Tap Voice off to turn on spoken cues.'), note: t('Tap Hands-free on any set and the camera stays on for the whole workout. It counts your reps, logs each set, runs your rest and moves on. Raise both hands and hold to move on early.'), image: 'count-reps.gif' },
     {
       title: t('Camera coach'),
-      text: t('Tap Camera coach during any set, or Try Camera coach on an exercise page. Prop your phone up so your whole body is in view, step back and start moving. It counts your reps and warns you about speed, range, evenness and leaning.'),
+      text: t('Tap Camera coach during any set, or Try Camera coach on an exercise page. Prop your phone or laptop up so your whole body is in view, step back and start moving. It counts your reps and says out loud when your speed, range, evenness or leaning needs fixing.'),
       note: t('This picture is an example of what you will see. Camera coach cannot see everything, such as a rounded back, and it does not replace a coach.'),
       image: 'camera.gif',
       action: `<button type="button" class="secondary" data-action="camera-practice" data-id="squat">${esc(t('Try Camera coach'))}</button>`,
     },
     { title: t('Watch a real video'), text: t('Open any exercise, or How to do it during a set, and tap Watch a real video. If you do not like it, find another or use your own.'), image: 'video.jpg', link: ['#/exercises', t('Exercises')] },
+    { title: t('Specials and the 12 week track'), text: t('Open Specials for videos with jump points, sorted by level, and the know-how behind them. Tap Follow this level and Today then sets every workout, day and rep for you.'), image: 'specials.jpg', link: ['#/specials', t('Specials')] },
     { title: t('Choose a workout for each day'), text: t('Pick a workout or a rest day for all seven days. Today then follows your choices.'), image: 'schedule.jpg', link: ['#/schedule', t('Weekly schedule')] },
     { title: t('Measure and check your bands'), text: t('A luggage scale shows what each band really pulls. The app also tracks each band and reminds you to check it for damage.'), image: 'measure.jpg', link: ['#/bands', t('Your bands')] },
     { title: t('See your progress'), text: t('Check your streak, sets per muscle, balance warnings, records and a chart for each exercise.'), image: 'progress.jpg', link: ['#/progress', t('Progress')] },

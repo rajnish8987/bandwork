@@ -6,7 +6,7 @@ timer and tells you when to move to a stronger band.
 
 Created and owned by **Rajnish Singh**: [LinkedIn](https://www.linkedin.com/in/rajnish8987), [GitHub](https://github.com/rajnish8987). © 2026, all rights reserved.
 
-**Open it: <https://rajnish8987.github.io/bandwork/>**
+**Open it: <https://rajnish8987.github.io/tensile/>**
 
 The web app and the Android app are built from the same `public/` folder. The version in Settings tells you they match.
 
@@ -28,8 +28,19 @@ but only once you press play.
 - **Only 10 minutes today:** three key exercises, two sets each, short rests.
 - **Weekly schedule:** choose a workout or rest for each of the 7 days, with advice if
   the same muscles get no time to recover.
-- **27 exercises:** each with an animated figure, written instructions and a real video
-  from YouTube. Works with bands alone; a door anchor or mini loop adds more exercises.
+- **69 exercises:** each with an animated figure, written instructions and a real video
+  from YouTube. Works with bands alone; a door anchor or mini loop adds more exercises,
+  and floor abs need no band at all.
+- **Specials:** 28 videos by Fitness My Life with jump points, sorted into Start here,
+  Beginner, Intermediate and Advanced, plus short know-how on progress, form and food.
+- **Hands-free mode:** on a laptop or phone, the camera stays on for the whole workout. It
+  counts reps, speaks corrections, logs each set, runs your rest and moves on. Raise both
+  hands and hold to move on early. Video stays on the device.
+- **12 week band track:** follow a level and Today sets every workout, day, set and rep,
+  including pyramid sets, circuits, slow negatives, heavy weeks, failure sets and push,
+  pull and legs. It follows the 12-Week Resistance Band Training Program on the
+  [Fitness My Life](https://www.youtube.com/@fitnessmylife) channel. The videos belong to
+  that channel and play from YouTube.
 
 **During a workout**
 
@@ -110,7 +121,7 @@ icon at the right of the Chrome or Edge address bar.
 
 ## Run it on your Android phone
 
-1. Open <https://rajnish8987.github.io/bandwork/> in Chrome on your phone.
+1. Open <https://rajnish8987.github.io/tensile/> in Chrome on your phone.
 2. Tap the menu, then **Add to Home screen** and **Install**. If Chrome offers it,
    **Install Tensile** in the app's Settings does the same.
 

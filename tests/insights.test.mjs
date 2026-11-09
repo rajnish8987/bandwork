@@ -211,8 +211,8 @@ test('no chosen days means no calendar file', () => {
 test('reminders become one weekly notification per day, using Android weekday numbers', () => {
   const list = notificationSchedule({ days: [0, 3], time: '06:05' });
   assert.deepEqual(list.map((n) => n.schedule.on), [
-    { weekday: 1, hour: 6, minute: 5 },
-    { weekday: 4, hour: 6, minute: 5 },
+    { weekday: 1, hour: 6, minute: 5, second: 0 }, // without second, Android keeps the seconds of when it was set
+    { weekday: 4, hour: 6, minute: 5, second: 0 },
   ]);
   assert.equal(new Set(list.map((n) => n.id)).size, 2);
 });

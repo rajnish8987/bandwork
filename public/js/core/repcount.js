@@ -37,9 +37,21 @@ const BY_EXERCISE = {
   'kneeling-crunch': HIP,
   'pull-apart': 'span',
   'overhead-pull-apart': 'span',
+  'chest-fly': 'span',
+  'incline-fly': 'span',
+  'decline-fly': 'span',
+  'reverse-fly': 'span',
+  'bent-reverse-fly': 'span',
+  'straight-arm-pulldown': SHOULDER,
+  'leg-extension': KNEE,
+  'front-raise': SHOULDER,
 };
 
-const NOT_SUPPORTED = new Set(['calf-raise', 'side-bend', 'dead-bug', 'lateral-walk', 'woodchop']);
+const NOT_SUPPORTED = new Set([
+  'calf-raise', 'side-bend', 'dead-bug', 'lateral-walk', 'woodchop', 'shrug', 'wrist-curl', 'reverse-wrist-curl', 'seated-calf',
+  'donkey-kick', 'crunch', 'reverse-crunch', 'knee-crunch', 'cross-crunch', 'flutter-kick', 'leg-raise', 'toe-touch', 'heel-touch',
+  'plank', 'mountain-climber', 'russian-twist',
+]);
 
 function jointsFor(exercise) {
   if (NOT_SUPPORTED.has(exercise.id)) return null;

@@ -14,6 +14,8 @@ import { AUTO_PHASE_NAMES, autoProgram } from '../public/js/core/autoplan.js';
 import { PLAN_NAMES } from '../public/js/core/plan.js';
 import { bandName, labelFor } from '../public/js/core/progression.js';
 import { BACKUP_ERRORS } from '../public/js/core/store.js';
+import { KNOW_HOW, LEVELS, SPECIALS } from '../public/js/core/specials.js';
+import { METHOD_NOTES, TRACK, TRACK_WORKOUT_NAMES } from '../public/js/core/track.js';
 
 afterEach(() => setLanguage('en'));
 
@@ -91,6 +93,17 @@ function contentPhrases() {
   for (const name of AUTO_PHASE_NAMES) found.add(name);
   const auto = autoProgram({});
   [auto.name, auto.summary].forEach((x) => found.add(x));
+  [TRACK.name, TRACK.summary].forEach((x) => found.add(x));
+  TRACK.phases.forEach((ph) => found.add(ph.name));
+  TRACK_WORKOUT_NAMES.forEach((x) => found.add(x));
+  Object.values(METHOD_NOTES).forEach((x) => found.add(x));
+  for (const level of LEVELS) [level.name, level.text].forEach((x) => found.add(x));
+  for (const special of SPECIALS) {
+    found.add(special.title);
+    if (special.plan) found.add(special.plan);
+    for (const [, label] of special.moments) if (label) found.add(label);
+  }
+  for (const item of KNOW_HOW) [item.title, ...(item.text ?? []), ...(item.list ?? [])].forEach((x) => found.add(x));
   return found;
 }
 

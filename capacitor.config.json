@@ -6,6 +6,12 @@
     "hostname": "rajnish8987.github.io",
     "androidScheme": "https"
   },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_tensile",
+      "iconColor": "#F5C518"
+    }
+  },
   "android": {
     "allowMixedContent": false,
     "webContentsDebuggingEnabled": false

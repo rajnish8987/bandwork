@@ -82,6 +82,46 @@ function lastCombo(session, bands, combos) {
   return owned && last.bandIds.length ? { kg, bandIds: last.bandIds } : closest;
 }
 
+/** A hold lasts about three seconds for each rep of the rep range. */
+export function holdRange(range) {
+  return { ...range, min: range.min * 3, max: range.max * 3 };
+}
+
+const HOLD_STEP = 5;
+
+/** Exercises with no band progress by adding reps, or seconds for a hold. */
+function bodyweightTarget(exercise, history, range) {
+  const goal = exercise.timed ? holdRange(range) : range;
+  const none = { bandIds: [] };
+  if (!history.length) return { ...none, repsGoal: goal.min, note: t('No band needed. Start easy and focus on your form.') };
+  const weakest = Math.min(...history.at(-1).sets.map((s) => s.reps));
+  if (weakest >= goal.max) return { ...none, repsGoal: goal.max, note: t('Top of the range reached. Slow down to make it harder.') };
+  const repsGoal = Math.min(goal.max, Math.max(goal.min, weakest + (exercise.timed ? HOLD_STEP : 1)));
+  return { ...none, repsGoal, note: t('No band needed. Your lowest last time was {weakest}.', { weakest }) };
+}
+
+/**
+ * For sets that follow a fixed list of reps, such as 12, 10 and 8. The first set's band
+ * is the starting point, because people often go up a band as the reps drop.
+ */
+export function prescribeScheme(exercise, history, bands, scheme, level) {
+  const range = { min: Math.min(...scheme), max: Math.max(...scheme) };
+  if (exercise.bodyweight) return { ...bodyweightTarget(exercise, history, range), repsGoal: scheme[0] };
+  if (!bands.length || !history.length) return { ...firstTime(exercise, bands, range, level), repsGoal: scheme[0] };
+
+  const combos = bandCombos(bands);
+  const last = history.at(-1);
+  const current = lastCombo({ sets: last.sets.slice(0, 1) }, bands, combos);
+  const same = { bandIds: current.bandIds, repsGoal: scheme[0] };
+  const hitEvery = scheme.every((reps, i) => (last.sets[i]?.reps ?? 0) >= reps);
+  if (hitEvery && !endedAtLimit(last)) {
+    const up = combos.find((c) => c.kg > current.kg);
+    if (up) return { bandIds: up.bandIds, repsGoal: scheme[0], note: t('You hit every target. Start on {band} today.', { band: labelFor(up.bandIds, bands) }) };
+    return { ...same, note: t('Strongest band reached. Lower slowly, for 3 seconds.') };
+  }
+  return { ...same, note: t('Start on {band} again and aim for the reps on each set.', { band: labelFor(current.bandIds, bands) }) };
+}
+
 const isUnder = (session, range) => session.sets.some((s) => s.reps < range.min);
 const endedAtLimit = (session) => session.sets.at(-1)?.effort === 'limit';
 const allEasy = (session) => session.sets.every((s) => s.effort === 'easy');
@@ -94,6 +134,7 @@ const allEasy = (session) => session.sets.every((s) => s.effort === 'easy');
  * @param level the person's experience, which sets the first target
  */
 export function prescribe(exercise, history, bands, range, level) {
+  if (exercise.bodyweight) return bodyweightTarget(exercise, history, range);
   if (!bands.length || !history.length) return firstTime(exercise, bands, range, level);
 
   const combos = bandCombos(bands);
