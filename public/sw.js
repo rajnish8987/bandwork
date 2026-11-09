@@ -2,7 +2,11 @@
 // the store straight away and refresh in the background, so an update shows on
 // the next launch.
 
-const CACHE = 'tensile-v10';
+const CACHE = 'tensile-v11';
+
+// This address can hold other sites, and they share one list of stores. Only this app's
+// own old copies are cleared.
+const OWN_COPY = /^(tensile|bandwork)-v\d+$/;
 
 // The camera rep counter in vendor/ is too large to store up front. It is stored
 // by the fetch handler below the first time someone opens it.
@@ -30,6 +34,7 @@ const FILES = [
   './js/core/recovery.js',
   './js/core/reminders.js',
   './js/core/repcount.js',
+  './js/core/route.js',
   './js/core/routines.js',
   './js/core/schedule.js',
   './js/core/session.js',
@@ -40,7 +45,9 @@ const FILES = [
   './js/core/track.js',
   './js/core/units.js',
   './js/core/version.js',
+  './js/core/voices.js',
   './js/core/videos.js',
+  './js/ui/camera-stage.js',
   './js/ui/camera.js',
   './js/ui/extra-screens.js',
   './js/ui/feedback.js',
@@ -62,6 +69,7 @@ const FILES = [
   './guide/count-reps.jpg',
   './guide/camera.gif',
   './guide/camera.jpg',
+  './guide/hands-free.jpg',
   './guide/video.jpg',
   './guide/schedule.jpg',
   './guide/measure.jpg',
@@ -85,7 +93,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => OWN_COPY.test(k) && k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
@@ -96,10 +104,13 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
-    const key = request.mode === 'navigate' ? './index.html' : request;
-    const stored = await cache.match(key, { ignoreSearch: request.mode === 'navigate' });
-    const refresh = fetch(request).then((response) => {
-      if (response.ok) cache.put(key, response.clone());
+    // Every page opens the app, so a page's refresh must fetch the app. Fetching the address
+    // itself would store whatever file it names as the app.
+    const isPage = request.mode === 'navigate';
+    const key = isPage ? './index.html' : request;
+    const stored = await cache.match(key, { ignoreSearch: isPage });
+    const refresh = fetch(key).then((response) => {
+      if (response.ok && response.type === 'basic') cache.put(key, response.clone());
       return response;
     });
     if (stored) {

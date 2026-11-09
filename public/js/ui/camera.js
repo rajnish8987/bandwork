@@ -4,6 +4,7 @@
 import { createFormCoach, FORM_CUES } from '../core/formcheck.js';
 import { t } from '../core/i18n.js';
 import { createRepCounter } from '../core/repcount.js';
+import { mountStage, stageControls, stagePanels } from './camera-stage.js';
 
 const BASE = new URL('../../vendor/mediapipe/', import.meta.url).href;
 
@@ -103,28 +104,34 @@ export function startPoseLoop({ video, onFrame, onReady, onError }) {
  * Opens the camera coach.
  * onCount(count) runs when a rep is counted; onCue(text) when there is form advice;
  * onUse(count) when the person keeps the count; without it, this is practice and there
- * is no count to keep. onClose runs when the camera closes.
+ * is no count to keep. onClose runs when the camera closes. colors are the avatar's; view
+ * says which parts of the screen to show, and onViewChange receives each change.
  */
-export function openCamera({ exercise, slowNegatives, onCount, onCue, onUse, onClose }) {
+export function openCamera({ exercise, slowNegatives, onCount, onCue, onUse, onClose, colors, view, onViewChange }) {
   const dialog = document.createElement('dialog');
   dialog.className = 'camera';
   dialog.innerHTML = `
-    <h2>${t('Camera coach')}: ${t(exercise.name)}</h2>
-    <div class="camera-view">
-      <video id="camera-video" playsinline muted></video>
+    <header class="camera-head">
+      <h2 tabindex="-1" autofocus>${t('Camera coach')}: ${t(exercise.name)}</h2>
+      ${stageControls({ notes: true })}
+    </header>
+    ${stagePanels('camera-video')}
+    <div class="camera-bar">
       <output class="camera-count" id="camera-count" aria-live="polite">0</output>
+      <div class="camera-words">
+        <p class="camera-cue" id="camera-cue" role="status" hidden></p>
+        <p class="hint" id="camera-status" role="status">${t('Loading the rep counter. The first time needs a connection and about 20 MB.')}</p>
+        <div class="camera-notes-box" id="camera-notes" hidden>
+          <strong>${t('Form notes')}</strong>
+          <ul class="camera-notes"></ul>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="primary" id="camera-use" disabled>${onUse ? t('Use this count') : t('Finish')}</button>
+        <button type="button" class="text-button" id="camera-cancel">${t('Cancel')}</button>
+      </div>
     </div>
-    <p class="camera-cue" id="camera-cue" role="status" hidden></p>
-    <p class="hint" id="camera-status" role="status">${t('Loading the rep counter. The first time needs a connection and about 20 MB.')}</p>
-    <div id="camera-notes" hidden>
-      <strong>${t('Form notes')}</strong>
-      <ul class="camera-notes"></ul>
-    </div>
-    <div class="dialog-actions">
-      <button type="button" class="primary" id="camera-use" disabled>${onUse ? t('Use this count') : t('Finish')}</button>
-      <button type="button" class="text-button" id="camera-cancel">${t('Cancel')}</button>
-    </div>
-    <p class="hint">${t('Prototype. It counts reps and checks speed, range, evenness and leaning. It cannot see everything, such as a rounded back, so it does not replace a coach. Video stays on this device.')}</p>`;
+    <p class="hint camera-about">${t('Prototype. It counts reps and checks speed, range, evenness and leaning. It cannot see everything, such as a rounded back, so it does not replace a coach. Video stays on this device.')}</p>`;
   document.body.append(dialog);
   dialog.showModal();
 
@@ -134,6 +141,8 @@ export function openCamera({ exercise, slowNegatives, onCount, onCue, onUse, onC
   const useButton = dialog.querySelector('#camera-use');
   const cueBox = dialog.querySelector('#camera-cue');
   const notes = dialog.querySelector('#camera-notes');
+  const stage = mountStage(dialog, { view, onChange: onViewChange });
+  stage.showExercise(exercise, colors);
   const coach = createFormCoach(exercise, { slowNegatives });
   const counter = createRepCounter(exercise, { onRep: (rep) => coach.repDone(rep) });
 
@@ -184,6 +193,7 @@ export function openCamera({ exercise, slowNegatives, onCount, onCue, onUse, onC
   dialog.querySelector('#camera-cancel').addEventListener('click', () => dialog.close());
   dialog.addEventListener('close', () => {
     stop();
+    stage.stop();
     dialog.remove();
     onClose?.();
   });

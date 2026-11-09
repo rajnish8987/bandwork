@@ -8,7 +8,7 @@ import { createHandsUp, createSetWatcher, gestureAllowed, repsToLog } from '../c
 import { t } from '../core/i18n.js';
 import { createRepCounter, supportsRepCount } from '../core/repcount.js';
 import { startPoseLoop } from './camera.js';
-import { mountFigure } from './figure.js';
+import { mountStage, stageControls, stagePanels } from './camera-stage.js';
 import { esc } from './html.js';
 
 const CUE_SPEECH_MS = 3500;
@@ -23,25 +23,30 @@ const CUE_SPEECH_MS = 3500;
  *  say(text), beep(): speak, and sound a beep
  *  announce(): say the current set
  *  onClose(): the mode has ended
+ *  cameraView: which parts of the screen to show; onCameraView(view) receives each change
  */
 export function openHandsFree(app) {
   const dialog = document.createElement('dialog');
   dialog.className = 'camera hands-free';
   dialog.innerHTML = `
-    <h2 id="hf-name">${esc(t('Hands-free'))}</h2>
-    <div class="camera-view">
-      <video id="hf-video" playsinline muted></video>
+    <header class="camera-head">
+      <h2 id="hf-name" tabindex="-1" autofocus>${esc(t('Hands-free'))}</h2>
+      ${stageControls()}
+    </header>
+    ${stagePanels('hf-video')}
+    <div class="camera-bar">
       <output class="camera-count" id="hf-count" aria-live="off"></output>
+      <div class="camera-words">
+        <p class="hf-goal" id="hf-goal" role="status"></p>
+        <p class="camera-cue" id="hf-cue" role="status" hidden></p>
+        <p class="hint" id="hf-status" role="status">${esc(t('Loading the rep counter. The first time needs a connection and about 20 MB.'))}</p>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="primary" id="hf-next" disabled>${esc(t('Finish this set'))}</button>
+        <button type="button" class="text-button" id="hf-leave">${esc(t('Leave hands-free'))}</button>
+      </div>
     </div>
-    <p class="hf-goal" id="hf-goal" role="status"></p>
-    <p class="camera-cue" id="hf-cue" role="status" hidden></p>
-    <div class="hf-figure" id="hf-figure"></div>
-    <p class="hint" id="hf-status" role="status">${esc(t('Loading the rep counter. The first time needs a connection and about 20 MB.'))}</p>
-    <div class="dialog-actions">
-      <button type="button" class="primary" id="hf-next" disabled>${esc(t('Finish this set'))}</button>
-      <button type="button" class="text-button" id="hf-leave">${esc(t('Leave hands-free'))}</button>
-    </div>
-    <p class="hint">${esc(t('Raise both hands and hold to move on. Each set is logged on its own, with the band named here. Leave hands-free to change anything.'))}</p>`;
+    <p class="hint camera-about">${esc(t('Raise both hands and hold to move on. Each set is logged on its own, with the band named here. Leave hands-free to change anything.'))}</p>`;
   document.body.append(dialog);
   dialog.showModal();
 
@@ -50,10 +55,10 @@ export function openHandsFree(app) {
   const countBox = box('hf-count');
   const goalBox = box('hf-goal');
   const cueBox = box('hf-cue');
-  const figureBox = box('hf-figure');
   const statusBox = box('hf-status');
   const nextButton = box('hf-next');
 
+  const stage = mountStage(dialog, { view: app.cameraView, onChange: app.onCameraView });
   const gesture = createHandsUp();
   let stopLoop = null;
   let finished = false;
@@ -167,15 +172,13 @@ export function openHandsFree(app) {
   const onFrame = (landmarks, at) => {
     const view = app.view();
     if (!view) {
-      app.say(t('Workout finished. Well done.'));
       close();
       return;
     }
     const nextKey = `${view.resting ? 'rest' : 'set'}:${view.step.exIndex}:${view.step.setIndex}`;
     if (nextKey !== key) {
       key = nextKey;
-      figureBox.style.setProperty('--band', view.bandColor);
-      mountFigure(figureBox, view.exercise);
+      stage.showExercise(view.exercise, { band: view.bandColor, on: view.bandOn });
       if (view.resting) set = null;
       else beginSet(view, at);
     }
@@ -191,6 +194,7 @@ export function openHandsFree(app) {
   dialog.addEventListener('close', () => {
     finished = true;
     stopLoop?.();
+    stage.stop();
     app.stopCounting();
     dialog.remove();
     app.onClose();

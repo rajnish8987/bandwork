@@ -215,6 +215,15 @@ async function still(page, name) {
     }, 3200);
   });
   await record(page, 'camera', async () => page.waitForTimeout(6500));
+  await page.locator('#camera-cancel').click();
+
+  await page.goto(`${base}/#/today`);
+  await page.getByRole('link', { name: 'Start workout' }).click();
+  await page.getByRole('button', { name: 'Skip warm-up' }).click();
+  await page.getByRole('button', { name: 'Hands-free' }).click();
+  await page.locator('#hf-next:not([disabled])').waitFor({ timeout: 90000 });
+  await page.waitForTimeout(4500);
+  await still(page, 'hands-free.jpg');
   await page.context().close();
 }
 

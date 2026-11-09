@@ -35,7 +35,8 @@ but only once you press play.
   Beginner, Intermediate and Advanced, plus short know-how on progress, form and food.
 - **Hands-free mode:** on a laptop or phone, the camera stays on for the whole workout. It
   counts reps, speaks corrections, logs each set, runs your rest and moves on. Raise both
-  hands and hold to move on early. Video stays on the device.
+  hands and hold to move on early. The avatar stays beside you, and either can be hidden.
+  Video stays on the device.
 - **12 week band track:** follow a level and Today sets every workout, day, set and rep,
   including pyramid sets, circuits, slow negatives, heavy weeks, failure sets and push,
   pull and legs. It follows the 12-Week Resistance Band Training Program on the
@@ -45,12 +46,14 @@ but only once you press play.
 **During a workout**
 
 - **Guided warm-up and cool-down:** timed moves chosen for that session.
-- **Voice coach:** speaks each set and counts reps, so your hands stay free.
+- **Voice coach:** speaks each set and counts reps, so your hands stay free. Hear the
+  voices on your device in Settings and choose one.
 - **Rep count:** beeps and a count at the speed you choose, with a pause to switch
-  sides.
-- **Camera coach (prototype):** counts reps and cues you on speed, range, left and
-  right evenness and leaning. It cannot see things like a rounded back, and it does not
-  replace a coach. Video from your camera never leaves your device.
+  sides. It does not watch you, so it counts at a set pace rather than counting real reps.
+- **Camera coach (prototype):** shows you beside an avatar doing the move, counts reps
+  and cues you on speed, range, left and right evenness and leaning. Show or hide your
+  picture, the avatar and form notes. It cannot see things like a rounded back, and it
+  does not replace a coach. Video from your camera never leaves your device.
 - **Logging:** reps, the band used (stack them if you like), how hard the set felt,
   and your stance, grip and distance from the door.
 - **Rest timer:** with sound, vibration and the screen kept on.

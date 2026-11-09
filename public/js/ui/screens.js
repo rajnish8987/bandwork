@@ -4,7 +4,7 @@
 import { bandsNeedingAttention } from '../core/bandcare.js';
 import { BAND_COLORS } from '../core/color.js';
 import { EXERCISES, exerciseById, isAvailable } from '../core/exercises.js';
-import { LANGUAGES, t } from '../core/i18n.js';
+import { LANGUAGES, localeTag, t } from '../core/i18n.js';
 import { balanceWarnings, MUSCLES, newRecords, personalRecords, weeklyMuscleSets, weekStreak } from '../core/insights.js';
 import { programStatus, sessionSettings } from '../core/programs.js';
 import { bandName, holdRange, labelFor, loadOf, prescribe, prescribeScheme, suggestBand } from '../core/progression.js';
@@ -17,6 +17,7 @@ import { METHOD_NOTES } from '../core/track.js';
 import { exerciseSeries, loggedExerciseIds, sessionsThisWeek, weeklyCounts, workoutSummary } from '../core/stats.js';
 import { formatLoad, toUnit } from '../core/units.js';
 import { APP_NAME, APP_VERSION, CREDITS } from '../core/version.js';
+import { voiceLabel, voicesForLanguage } from '../core/voices.js';
 import { amount, bandFill, dayName, esc, longDate, plural, safeColor, shortDate } from './html.js';
 import { exerciseMoments } from './specials-screen.js';
 import { howTo, videoBlock } from './workout-screens.js';
@@ -124,6 +125,31 @@ function toggle(field, label, hint, checked) {
     <input type="checkbox" data-field="${field}" ${checked ? 'checked' : ''}>
     <span><strong>${esc(label)}</strong>${hint ? `<small>${esc(hint)}</small>` : ''}</span>
   </label>`;
+}
+
+export function voicePicker(profile, voices) {
+  if (!voices) return '';
+  const list = voicesForLanguage(voices, localeTag());
+  if (!list.length) return `<p class="hint">${esc(t('This device has no voice for this language, so cues stay silent. Beeps still play.'))}</p>`;
+  const row = (uri, name, detail, online) => `<li class="voice-row">
+      <label class="voice-pick">
+        <input type="radio" name="voiceURI" data-field="voiceURI" value="${esc(uri)}"${(profile.voiceURI ?? '') === uri ? ' checked' : ''}>
+        <span><strong>${esc(name)}</strong><small>${esc(detail)}${online ? `. ${esc(t('Needs internet'))}` : ''}</small></span>
+      </label>
+      <button type="button" class="secondary voice-hear" data-action="voice-hear" data-uri="${esc(uri)}" aria-label="${esc(t('Hear {name}', { name }))}">${esc(t('Hear it'))}</button>
+    </li>`;
+  const usual = list.find((voice) => voice.default);
+  return `<fieldset class="voices">
+    <legend>${esc(t('Voice'))}</legend>
+    <p class="hint">${esc(t('Hear each one and choose. This list comes from this device, so your laptop and phone can differ.'))}</p>
+    <ul class="voice-list">
+      ${row('', t('Device default'), usual ? voiceLabel(usual).name : t('Chosen by this device'), false)}
+      ${list.map((voice) => {
+    const { name, detail } = voiceLabel(voice);
+    return row(voice.voiceURI, name, detail, voice.localService === false);
+  }).join('')}
+    </ul>
+  </fieldset>`;
 }
 
 function bandEditor(profile) {
@@ -612,7 +638,7 @@ function remindersSection(profile, native) {
   </section>`;
 }
 
-export function settingsScreen({ state, message, dataMessage, canInstall, secure, native }) {
+export function settingsScreen({ state, message, dataMessage, canInstall, secure, native, voices }) {
   const { profile, workouts } = state;
   return `<main class="page settings">
     <h1 class="display" tabindex="-1">${esc(t('Settings'))}</h1>
@@ -646,6 +672,7 @@ export function settingsScreen({ state, message, dataMessage, canInstall, secure
         ${toggle('warmups', t('Guided warm-up'), t('A few timed moves before you start'), profile.warmups)}
         ${toggle('cooldowns', t('Guided cool-down'), t('A few stretches when you finish'), profile.cooldowns)}
       </div>
+      <div id="voice-picker">${voicePicker(profile, voices)}</div>
       ${choiceGroup('tempo', t('Rep count speed'), [['fast', t('Quick'), t('1 up, 2 down')], ['steady', t('Steady'), t('2 up, 2 down')], ['slow', t('Slow'), t('2 up, 4 down')]], profile.tempo)}
     </section>
     <section>

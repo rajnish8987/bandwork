@@ -1,3 +1,5 @@
+import { exerciseById } from './exercises.js';
+
 export const STORAGE_KEY = 'bandwork.state';
 const VERSION = 1;
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -51,6 +53,8 @@ function defaultProfile() {
     language: null, // null follows the device
     unit: 'kg',
     voice: false,
+    voiceURI: null, // null lets the device choose
+    cameraView: { you: true, avatar: true, notes: true },
     tempo: 'steady',
     warmups: true,
     cooldowns: true,
@@ -126,6 +130,12 @@ function validWorkout(w) {
     && w.exercises.every((e) => e && typeof e.exerciseId === 'string' && Array.isArray(e.sets) && e.sets.every(validSet));
 }
 
+// Far more than years of workouts. A larger file is refused before it is read.
+export const MAX_BACKUP_BYTES = 50 * 1024 * 1024;
+
+// A backup can come from anywhere, and these names reach into how objects work.
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 const NOT_A_BACKUP = 'That file is not a Tensile backup.';
 const BAD_BAND = 'That backup has a band with an invalid colour or tension.';
 const BAD_WORKOUT = 'That backup has a damaged workout, so nothing was restored.';
@@ -135,9 +145,10 @@ export const BACKUP_ERRORS = [NOT_A_BACKUP, BAD_BAND, BAD_WORKOUT];
 
 /** Reads a backup file's text. Throws an Error with a message fit to show the person. */
 export function parseBackup(text) {
+  if (text.length > MAX_BACKUP_BYTES) throw new Error(NOT_A_BACKUP);
   let data;
   try {
-    data = JSON.parse(text);
+    data = JSON.parse(text, (key, value) => (UNSAFE_KEYS.has(key) ? undefined : value));
   } catch {
     throw new Error(NOT_A_BACKUP);
   }
@@ -193,6 +204,17 @@ function cleanReminders(r, fallback) {
   };
 }
 
+function cleanSwaps(swaps) {
+  if (!swaps || typeof swaps !== 'object' || Array.isArray(swaps)) return {};
+  return Object.fromEntries(Object.entries(swaps).filter(([from, to]) => exerciseById(from) && typeof to === 'string' && exerciseById(to)));
+}
+
+function cleanCameraView(view) {
+  const saved = view && typeof view === 'object' ? view : {};
+  const part = (name) => saved[name] !== false;
+  return { you: part('you'), avatar: part('avatar'), notes: part('notes') };
+}
+
 function normaliseProfile(p) {
   const fallback = defaultProfile();
   const pick = (value, allowed, otherwise) => (allowed.includes(value) ? value : otherwise);
@@ -202,6 +224,8 @@ function normaliseProfile(p) {
     unit: pick(p.unit, ['kg', 'lb'], 'kg'),
     tempo: pick(p.tempo, ['fast', 'steady', 'slow'], 'steady'),
     voice: Boolean(p.voice),
+    voiceURI: typeof p.voiceURI === 'string' && p.voiceURI ? p.voiceURI : null,
+    cameraView: cleanCameraView(p.cameraView),
     warmups: Boolean(p.warmups),
     cooldowns: Boolean(p.cooldowns),
     reminders: cleanReminders(p.reminders, fallback.reminders),
@@ -220,7 +244,7 @@ function normaliseProfile(p) {
     rest: pick(p.rest, ['auto', 30, 45, 60, 90, 120, 180], fallback.rest),
     autoLighter: p.autoLighter === undefined ? true : Boolean(p.autoLighter),
     nextIndex: Number.isInteger(p.nextIndex) && p.nextIndex >= 0 ? p.nextIndex : 0,
-    swaps: p.swaps && typeof p.swaps === 'object' && !Array.isArray(p.swaps) ? p.swaps : {},
+    swaps: cleanSwaps(p.swaps),
     onboarded: Boolean(p.onboarded),
     hasAnchor: Boolean(p.hasAnchor),
     hasMini: Boolean(p.hasMini),

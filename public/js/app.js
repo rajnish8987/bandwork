@@ -14,7 +14,8 @@ import {
   addRest, currentStep, finishSession, logSet, plannedReps, setEntrySetup, skipExercise, skipRest, startSession, swapInSession, undoLastSet,
 } from './core/session.js';
 import { describeSetup } from './core/setup.js';
-import { defaultState, loadState, makeBackup, newBand, newId, parseBackup, saveState, STANDARD_TENSIONS } from './core/store.js';
+import { parseRoute as readRoute } from './core/route.js';
+import { defaultState, loadState, makeBackup, MAX_BACKUP_BYTES, newBand, newId, parseBackup, saveState, STANDARD_TENSIONS } from './core/store.js';
 import { formatLoad, fromUnit, toUnit } from './core/units.js';
 import { weekStart } from './core/stats.js';
 import { TRACK_ID, trackStartFor } from './core/track.js';
@@ -27,9 +28,9 @@ import { keepScreenOn, restEnded, tempoBeep, unlockSound } from './ui/feedback.j
 import { mountFigure, stopFigures } from './ui/figure.js';
 import { applyNativeReminders, isNative, saveTextFile } from './ui/native.js';
 import {
-  credits, exerciseScreen, libraryScreen, nav, progressScreen, settingsScreen, setupScreen, startingBands, summaryScreen, todayScreen, watermark,
+  credits, exerciseScreen, libraryScreen, nav, progressScreen, settingsScreen, setupScreen, startingBands, summaryScreen, todayScreen, voicePicker, watermark,
 } from './ui/screens.js';
-import { canSpeak, speak, stopSpeaking } from './ui/voice.js';
+import { canSpeak, loadVoices, speak, stopSpeaking } from './ui/voice.js';
 import { goalText, setOfText, fieldColors, restScreen, routineScreen, setScreen } from './ui/workout-screens.js';
 
 const root = document.getElementById('app');
@@ -72,11 +73,7 @@ function editProfile(change) {
   commit(next);
 }
 
-function parseRoute() {
-  const [name = 'today', arg, extra] = location.hash.replace(/^#\/?/, '').split('/');
-  const decode = (part) => part && decodeURIComponent(part);
-  return { name: name || 'today', arg: decode(arg), extra: decode(extra) };
-}
+const parseRoute = () => readRoute(location.hash);
 
 const go = (hash) => {
   if (location.hash === hash) render();
@@ -89,8 +86,10 @@ function take(key) {
   return value;
 }
 
+const voiceSample = () => t('One, two, three. Keep your back straight.');
+
 const say = (text) => {
-  if (state.profile.voice || ui.handsFree) speak(text); // in hands-free mode, sound is the whole interface
+  if (state.profile.voice || ui.handsFree) speak(text, state.profile.voiceURI); // in hands-free mode, sound is the whole interface
 };
 
 /* ---------- Starting a workout, warm-up and cool-down ---------- */
@@ -303,6 +302,12 @@ function stopTempo() {
   if (!tempo) return;
   clearInterval(tempo.timer);
   tempo = null;
+  stopSpeaking();
+}
+
+function setTempoLabel(text) {
+  const label = document.getElementById('tempo-label');
+  if (label) label.textContent = text;
 }
 
 function setTempoText(text) {
@@ -316,8 +321,7 @@ function finishTempo(reps, message) {
   stopTempo();
   if (reps > 0) ui.draft.reps = reps;
   applyDraftToScreen();
-  const button = document.getElementById('tempo-button');
-  if (button) button.textContent = tempoLabel();
+  setTempoLabel(tempoLabel());
   setTempoText(message);
   say(message);
 }
@@ -372,14 +376,20 @@ function startTempo({ leadInSeconds, onDone } = {}) {
     latest: null,
     timer: setInterval(tickTempo, 100),
   };
-  const button = document.getElementById('tempo-button');
-  if (button) button.textContent = t('Stop counting');
+  setTempoLabel(t('Stop counting'));
   tickTempo();
 }
 
 /* ---------- Dialogs ---------- */
 
+/** Something else has taken over the screen, so the count ends here and nothing more is said. */
+function interruptCount() {
+  if (tempo && !tempo.onDone) finishTempo(0, '');
+  else stopSpeaking();
+}
+
 function openDialog({ title, body, actions: buttons }) {
+  interruptCount();
   const dialog = document.createElement('dialog');
   const heading = document.createElement('h2');
   heading.textContent = title;
@@ -421,6 +431,7 @@ function handsFreeView() {
   const exercise = exerciseById(entry.exerciseId);
   const draft = draftFor(step);
   const restLeft = active.restEndsAt ? active.restEndsAt - Date.now() : 0;
+  const colors = fieldColors(draft.bandIds, profile.bands);
   return {
     step,
     exercise,
@@ -431,9 +442,12 @@ function handsFreeView() {
     setText: setOfText(active, step.setIndex + 1, entry.targetSets),
     goal: goalText(exercise, active, step, entry),
     bandText: exercise.bodyweight ? t('No band needed') : labelFor(draft.bandIds, profile.bands),
-    bandColor: fieldColors(draft.bandIds, profile.bands).band,
+    bandColor: colors.band,
+    bandOn: colors.on,
   };
 }
+
+const saveCameraView = (view) => editProfile((profile) => { profile.cameraView = view; });
 
 async function startHandsFree() {
   const usable = (window.isSecureContext || isNative()) && navigator.mediaDevices?.getUserMedia;
@@ -465,14 +479,19 @@ async function startHandsFree() {
       ui.announced = null;
       announceSet();
     },
+    cameraView: state.profile.cameraView,
+    onCameraView: saveCameraView,
     onClose: () => {
       ui.handsFree = false;
+      stopSpeaking();
+      if (!handsFreeView()) speak(t('Workout finished. Well done.'), state.profile.voiceURI);
       if (parseRoute().name === 'workout') render();
     },
   });
 }
 
-async function startCamera(exercise, callbacks) {
+async function startCamera(exercise, { onClose, ...callbacks }) {
+  interruptCount();
   const usable = (window.isSecureContext || isNative()) && navigator.mediaDevices?.getUserMedia;
   if (!usable) {
     openDialog({
@@ -501,8 +520,15 @@ async function startCamera(exercise, callbacks) {
       if (performance.now() >= cueUntil) say(String(count)); // never talk over a correction
     },
     // Spoken even with Voice off: from across the room, this is the only way to hear a correction.
-    onCue: (text) => { cueUntil = performance.now() + CUE_SPEECH_MS; speak(text); },
+    onCue: (text) => { cueUntil = performance.now() + CUE_SPEECH_MS; speak(text, state.profile.voiceURI); },
+    colors: fieldColors(ui.draft?.bandIds ?? [], state.profile.bands),
+    view: state.profile.cameraView,
+    onViewChange: saveCameraView,
     ...callbacks,
+    onClose: () => {
+      stopSpeaking();
+      onClose?.();
+    },
   });
 }
 
@@ -565,6 +591,7 @@ function videoFrame(name, src) {
   frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
   frame.allowFullscreen = true;
   frame.referrerPolicy = 'strict-origin-when-cross-origin'; // YouTube refuses to play without this
+  frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox');
   frame.src = src;
   return frame;
 }
@@ -575,6 +602,7 @@ function showOffline(status) {
 }
 
 function playVideo(button) {
+  interruptCount();
   const box = button.closest('.video');
   const status = box.querySelector('.video-status');
   if (!navigator.onLine) {
@@ -604,6 +632,7 @@ function playSpecial(button) {
 }
 
 function openSwapDialog(exIndex) {
+  interruptCount();
   const entry = state.active.exercises[exIndex];
   const taken = new Set(state.active.exercises.map((e) => e.exerciseId));
   const options = swapOptions(entry.exerciseId, state.profile).filter((e) => !taken.has(e.id));
@@ -669,7 +698,7 @@ async function importBackup(input) {
   const file = input.files?.[0];
   if (!file) return;
   try {
-    const text = await file.text();
+    const text = file.size > MAX_BACKUP_BYTES ? ' '.repeat(MAX_BACKUP_BYTES + 1) : await file.text();
     input.value = ''; // so the same file can be picked again
     const restored = parseBackup(text);
     openDialog({
@@ -794,8 +823,7 @@ const actions = {
   },
   'voice-toggle': (el) => {
     editProfile((profile) => { profile.voice = !profile.voice; });
-    el.setAttribute('aria-pressed', state.profile.voice);
-    el.textContent = state.profile.voice ? t('Voice on') : t('Voice off');
+    el.setAttribute('aria-checked', String(state.profile.voice));
     if (state.profile.voice) {
       ui.announced = null;
       announceSet();
@@ -803,6 +831,7 @@ const actions = {
       stopSpeaking();
     }
   },
+  'voice-hear': (el) => speak(voiceSample(), el.dataset.uri || null),
   'hands-free': () => startHandsFree(),
   'camera-open': () => {
     const step = currentStep(state.active);
@@ -1133,10 +1162,12 @@ function updateProfileField(input) {
   editProfile((profile) => {
     if (input.type === 'checkbox') profile[field] = input.checked;
     else if (field === 'language') profile.language = input.value || null;
+    else if (field === 'voiceURI') profile.voiceURI = input.value || null;
     else if (field === 'rest') profile.rest = input.value === 'auto' ? 'auto' : Number(input.value);
     else profile[field] = ['daysPerWeek', 'minutes'].includes(field) ? Number(input.value) : input.value;
   });
   // These change text all over the screen, so they are worth the redraw.
+  if (field === 'voiceURI') speak(voiceSample(), state.profile.voiceURI);
   if (field === 'language' || field === 'unit') render();
   else if (field === 'level') refreshStartingBands();
 }
@@ -1328,6 +1359,7 @@ function screenFor(route) {
         canInstall: Boolean(ui.installPrompt),
         secure: window.isSecureContext || isNative(),
         native: isNative(),
+        voices: askForVoices(),
       }));
     case 'bands': {
       if (!route.arg) return shell(bandsScreen({ state, now, message: take('message') }));
@@ -1356,6 +1388,25 @@ function screenFor(route) {
   }
 }
 
+/** The voices for the Settings list. Only the list changes when they arrive, so nothing being typed is lost. */
+function askForVoices() {
+  if (!ui.voicesAsked) {
+    ui.voicesAsked = true;
+    loadVoices().then((voices) => {
+      ui.voices = voices;
+      const box = document.getElementById('voice-picker');
+      if (box) box.innerHTML = voicePicker(state.profile, voices);
+    });
+  }
+  return ui.voices ?? null;
+}
+
+/** Speech and open dialogs belong to the screen being left, so they end with it. */
+function leaveScreen() {
+  stopSpeaking();
+  document.querySelectorAll('dialog[open]').forEach((dialog) => dialog.close());
+}
+
 function render() {
   const route = parseRoute();
   const html = screenFor(route);
@@ -1367,6 +1418,7 @@ function render() {
 
   const routeKey = `${route.name}/${route.arg ?? ''}`;
   const changedRoute = routeKey !== lastRoute;
+  if (changedRoute) leaveScreen();
   const focusId = changedRoute ? null : document.activeElement?.id;
   const focusAction = changedRoute ? null : document.activeElement?.dataset?.action;
 
@@ -1407,7 +1459,6 @@ function render() {
   lastRoute = routeKey;
 }
 
-window.addEventListener('hashchange', render);
 window.addEventListener('beforeinstallprompt', (event) => {
   event.preventDefault();
   ui.installPrompt = event;
@@ -1417,11 +1468,20 @@ window.addEventListener('appinstalled', () => {
   ui.installPrompt = null;
 });
 
-// The Android app already holds its own files, so it needs no offline worker.
-if ('serviceWorker' in navigator && window.isSecureContext && !isNative()) {
-  navigator.serviceWorker.register('./sw.js').catch(() => {});
-  removeOldCopies(navigator.serviceWorker);
+function start() {
+  window.addEventListener('hashchange', render);
+  window.addEventListener('pagehide', stopSpeaking);
+  // The Android app already holds its own files, so it needs no offline worker.
+  if ('serviceWorker' in navigator && window.isSecureContext && !isNative()) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    removeOldCopies(navigator.serviceWorker);
+  }
+  if (state.profile.voiceURI) loadVoices(); // ready for the first thing said
+  render();
 }
 
 applyLanguage();
-render();
+// Another site must not show this app inside its own page and trick people into tapping it.
+// GitHub Pages cannot send the header that forbids this, so the app checks for itself.
+if (window.top !== window.self) document.body.textContent = t('Tensile only opens in its own window.');
+else start();
