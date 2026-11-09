@@ -2,7 +2,7 @@
 // A test keeps it in step with package.json and the Android build.
 
 export const APP_NAME = 'Tensile';
-export const APP_VERSION = '2.2.0';
+export const APP_VERSION = '2.2.1';
 
 export const CREDITS = {
   owner: 'Rajnish Singh',

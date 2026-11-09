@@ -27,44 +27,53 @@ test('a malformed address cannot crash the app', () => {
 
 const CACHE = project('public/sw.js').match(/const CACHE = '([^']+)'/)[1];
 
-function runWorker({ network, stored = {}, otherCaches = [] }) {
+function runWorker({ network, stored = {}, otherCaches = [], pages = [] }) {
   const listeners = {};
   const fetched = [];
+  const fetchOptions = [];
   const puts = [];
   const deleted = [];
+  const installed = [];
+  const reopened = [];
   const open = () => ({
-    addAll: async () => {},
+    addAll: async (list) => { installed.push(...list); },
     match: async (key) => stored[typeof key === 'string' ? key : key.url],
     put: async (key, response) => { puts.push({ key: typeof key === 'string' ? key : key.url, response }); },
   });
   const worker = {
     self: {
-      location: { origin: 'https://example.test' },
+      location: new URL('https://example.test/tensile/sw.js'),
       addEventListener: (name, fn) => { listeners[name] = fn; },
       skipWaiting: async () => {},
-      clients: { claim: async () => {} },
+      clients: {
+        claim: async () => {},
+        matchAll: async () => pages.map((url) => ({ url, navigate: async (to) => { reopened.push(to); } })),
+      },
     },
     caches: {
       open: async () => open(),
       keys: async () => [CACHE, ...otherCaches],
       delete: async (name) => { deleted.push(name); return true; },
     },
-    fetch: async (request) => {
+    fetch: async (request, options) => {
       const url = typeof request === 'string' ? request : request.url;
       fetched.push(url);
+      fetchOptions.push(options);
       return network(url);
     },
+    Request: class { constructor(url, options) { this.url = url; this.cache = options?.cache; } },
     URL,
     Promise,
   };
   vm.runInNewContext(project('public/sw.js'), worker);
-  return { listeners, fetched, puts, deleted };
+  return { listeners, fetched, fetchOptions, puts, deleted, installed, reopened };
 }
 
 async function fetchEvent(listeners, request) {
   const waits = [];
   let answer;
   listeners.fetch({ request, respondWith: (p) => { answer = p; }, waitUntil: (p) => waits.push(p) });
+  if (!answer) return 'left to the browser';
   const response = await answer;
   await Promise.all(waits);
   await new Promise((resolve) => setImmediate(resolve));
@@ -74,15 +83,74 @@ async function fetchEvent(listeners, request) {
 const pageResponse = { ok: true, type: 'basic', name: 'the app', clone() { return this; } };
 const imageResponse = { ok: true, type: 'basic', name: 'a picture', clone() { return this; } };
 
-test('opening a file by its address cannot overwrite the stored app', async () => {
+test('opening a file by its address shows that file, and never touches the stored app', async () => {
   const { listeners, fetched, puts } = runWorker({
     network: (url) => (url === './index.html' ? pageResponse : imageResponse),
     stored: { './index.html': pageResponse },
   });
-  const shown = await fetchEvent(listeners, { method: 'GET', mode: 'navigate', url: 'https://example.test/tensile/guide/setup.jpg' });
-  assert.equal(shown, pageResponse, 'the app opens');
-  assert.deepEqual(fetched, ['./index.html'], 'the refresh asks for the app, not the file named in the address');
-  assert.deepEqual(puts.map((p) => p.response.name), ['the app']);
+  for (const file of ['guide/setup.jpg', 'js/core/version.js', 'nope']) {
+    const shown = await fetchEvent(listeners, { method: 'GET', mode: 'navigate', url: `https://example.test/tensile/${file}` });
+    assert.equal(shown, 'left to the browser', file);
+  }
+  assert.deepEqual(fetched, []);
+  assert.deepEqual(puts, []);
+});
+
+test('the app opens from its own addresses, and refreshes as the app', async () => {
+  for (const address of ['', 'index.html', '?from=home', 'index.html?x=1']) {
+    const { listeners, fetched, puts } = runWorker({ network: () => pageResponse, stored: { './index.html': pageResponse } });
+    const shown = await fetchEvent(listeners, { method: 'GET', mode: 'navigate', url: `https://example.test/tensile/${address}` });
+    assert.equal(shown, pageResponse, address);
+    assert.deepEqual(fetched, ['./index.html'], address);
+    assert.deepEqual(puts.map((p) => p.response.name), ['the app'], address);
+  }
+});
+
+test('a new version stores fresh files, not what the browser kept from the old one', async () => {
+  const { listeners, installed } = runWorker({ network: () => pageResponse });
+  let done;
+  listeners.install({ waitUntil: (p) => { done = p; } });
+  await done;
+  assert.ok(installed.length > 20, 'the list of files');
+  assert.deepEqual(installed.filter((request) => request.cache !== 'reload').map((r) => r.url ?? r), []);
+});
+
+test('a background refresh asks the server, not the browser cache', async () => {
+  const { listeners, fetchOptions } = runWorker({ network: () => imageResponse });
+  await fetchEvent(listeners, { method: 'GET', mode: 'no-cors', url: 'https://example.test/tensile/guide/setup.jpg' });
+  assert.deepEqual(fetchOptions.map((o) => o?.cache), ['no-cache']);
+});
+
+async function activate(listeners) {
+  let done;
+  listeners.activate({ waitUntil: (p) => { done = p; } });
+  await done;
+  await new Promise((resolve) => setImmediate(resolve));
+}
+
+test('an update reopens pages still running the old version', async () => {
+  const pages = ['https://example.test/tensile/', 'https://example.test/tensile/#/workout'];
+  const { listeners, reopened } = runWorker({ network: () => pageResponse, otherCaches: ['tensile-v1'], pages });
+  await activate(listeners);
+  // No address fragment: going to the same address with one would not reload the page.
+  assert.deepEqual(reopened, ['https://example.test/tensile/', 'https://example.test/tensile/']);
+});
+
+test('reopening pages is not part of activating, or each would wait for the other', async () => {
+  const pages = ['https://example.test/tensile/'];
+  const { listeners, reopened } = runWorker({ network: () => pageResponse, otherCaches: ['tensile-v1'], pages });
+  let done;
+  listeners.activate({ waitUntil: (p) => { done = p; } });
+  await done;
+  assert.deepEqual(reopened, [], 'activation finished before any page was reopened');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(reopened.length, 1);
+});
+
+test('a first install leaves the page alone', async () => {
+  const { listeners, reopened } = runWorker({ network: () => pageResponse, pages: ['https://example.test/tensile/'] });
+  await activate(listeners);
+  assert.deepEqual(reopened, []);
 });
 
 test('a file is still refreshed under its own name', async () => {

@@ -85,6 +85,8 @@ test('the server serves the app with correct types', async () => {
   assert.match(js.headers.get('content-type'), /javascript/);
   const manifest = await fetch(`${base}/manifest.webmanifest`);
   assert.match(manifest.headers.get('content-type'), /manifest\+json/);
+  assert.equal((await fetch(`${base}/guide/setup.jpg`)).headers.get('content-type'), 'image/jpeg');
+  assert.equal((await fetch(`${base}/guide/camera.gif`)).headers.get('content-type'), 'image/gif');
 });
 
 test('the server refuses paths outside the app folder', async () => {
