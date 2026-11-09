@@ -439,7 +439,7 @@ dialog.camera .dialog-actions { margin-top: 4px; }
   dialog.camera .camera-count { font-size: clamp(140px, 16vw, 240px); }
   dialog.hands-free h2 { font: 800 clamp(40px, 4vw, 60px)/1 var(--display); }
   dialog.hands-free .hf-goal { font-size: clamp(26px, 2.4vw, 36px); }
-  dialog.hands-free .hf-figure { display: block; width: min(100%, 26vh); margin: 0 auto; --band: var(--danger); }
+  dialog.hands-free .hf-figure { display: block; width: min(100%, 26vh); margin: 0 auto; }
 }
 .try-camera { width: 100%; max-width: 420px; margin: 14px auto 0; }
 

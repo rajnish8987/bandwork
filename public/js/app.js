@@ -430,6 +430,7 @@ function handsFreeView() {
     setText: setOfText(active, step.setIndex + 1, entry.targetSets),
     goal: goalText(exercise, active, step, entry),
     bandText: exercise.bodyweight ? t('No band needed') : labelFor(draft.bandIds, profile.bands),
+    bandColor: fieldColors(draft.bandIds, profile.bands).band,
   };
 }
 

@@ -174,6 +174,7 @@ export function openHandsFree(app) {
     const nextKey = `${view.resting ? 'rest' : 'set'}:${view.step.exIndex}:${view.step.setIndex}`;
     if (nextKey !== key) {
       key = nextKey;
+      figureBox.style.setProperty('--band', view.bandColor);
       mountFigure(figureBox, view.exercise);
       if (view.resting) set = null;
       else beginSet(view, at);

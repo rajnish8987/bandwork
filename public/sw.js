@@ -2,7 +2,7 @@
 // the store straight away and refresh in the background, so an update shows on
 // the next launch.
 
-const CACHE = 'tensile-v8';
+const CACHE = 'tensile-v9';
 
 // The camera rep counter in vendor/ is too large to store up front. It is stored
 // by the fetch handler below the first time someone opens it.
