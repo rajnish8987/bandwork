@@ -172,22 +172,44 @@ const picture = (name, title) => (name.endsWith('.gif')
 /** The steps of the guide. Pictures are made by tools/make-guide.mjs. */
 export const GUIDE_PICTURES = [
   'setup.jpg', 'start-workout.gif', 'start-workout.jpg', 'log-set.gif', 'log-set.jpg', 'count-reps.gif', 'count-reps.jpg',
-  'camera.gif', 'camera.jpg', 'video.jpg', 'specials.jpg', 'schedule.jpg', 'measure.jpg', 'progress.jpg', 'programs.jpg', 'settings.jpg',
+  'camera.gif', 'camera.jpg', 'hands-free.jpg', 'video.jpg', 'specials.jpg', 'schedule.jpg', 'measure.jpg', 'progress.jpg', 'programs.jpg', 'settings.jpg',
 ];
+
+/** The four kinds of help side by side. On a phone each row becomes a card. */
+function helpTable() {
+  const headings = [t('Use it when'), t('Camera'), t('Counts'), t('Corrects form'), t('Logs your set'), t('Lasts')];
+  const rows = [
+    [t('Count reps for me'), t('You want a steady pace with no camera'), t('No'), t('A timed count, not your real reps'), t('No'), t('No. It fills in your planned reps, then you tap Log set'), t('One set')],
+    [t('Camera coach'), t('You want to check one set, or learn a move'), t('Yes'), t('Your real reps'), t('Yes'), t('No. Tap Use this count, then Log set'), t('One set')],
+    [t('Hands-free'), t('You want to train without touching the screen'), t('Yes'), t('Your real reps'), t('Yes'), t('Yes, then it runs your rest and moves on'), t('The whole workout')],
+    [t('Voice'), t('You want to hear each set and rep count'), t('No'), t('Nothing. It only speaks'), t('No'), t('No'), t('Until you turn it off')],
+  ];
+  return `<table class="help-table">
+    <thead><tr><td></td>${headings.map((h) => `<th scope="col">${esc(h)}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(([name, ...cells]) => `<tr><th scope="row">${esc(name)}</th>${cells.map((cell, i) => `<td data-label="${esc(headings[i])}">${esc(cell)}</td>`).join('')}</tr>`).join('')}</tbody>
+  </table>`;
+}
 
 export function guideScreen() {
   const steps = [
     { title: t('Set up your bands'), text: t('Choose your level to see which band to start with. Check each band and its tension, then choose your goal and how long you can train. Tap Build my plan. You can change all of it later in Settings.'), image: 'setup.jpg' },
     { title: t('Start a workout'), text: t('Today shows your next workout. Tap Start workout. A short warm-up runs first, or tap Skip warm-up.'), image: 'start-workout.gif' },
     { title: t('Log each set'), text: t('Set your reps with the plus and minus buttons, tap the band you used, and choose how hard it felt. Tap Log set and the rest timer starts on its own.'), image: 'log-set.gif' },
-    { title: t('Keep your hands free'), text: t('Tap Count reps for me to hear beeps and see a count at a steady pace. Tap Voice off to turn on spoken cues.'), note: t('Tap Hands-free on any set and the camera stays on for the whole workout. It counts your reps, logs each set, runs your rest and moves on. Raise both hands and hold to move on early.'), image: 'count-reps.gif' },
+    {
+      title: t('Which one do I use?'),
+      text: t('Every set shows the same three kinds of help, and Voice can go with any of them. On a laptop, Hands-free is the easiest way through a whole workout.'),
+      table: helpTable(),
+      note: t('Camera coach and Hands-free say corrections out loud, even with Voice off. Hands-free also says everything else. With Count reps for me and Camera coach, turn Voice on to hear the numbers. Choose the voice itself in Settings.'),
+    },
+    { title: t('Count reps for me'), text: t('Tap Count reps for me to hear beeps and see a count at a steady pace. Follow the beeps. It does not see you, so it counts the same however you move.'), image: 'count-reps.gif' },
     {
       title: t('Camera coach'),
-      text: t('Tap Camera coach during any set, or Try Camera coach on an exercise page. Prop your phone or laptop up so your whole body is in view, step back and start moving. It counts your reps and says out loud when your speed, range, evenness or leaning needs fixing.'),
-      note: t('This picture is an example of what you will see. Camera coach cannot see everything, such as a rounded back, and it does not replace a coach.'),
+      text: t('Tap Camera coach during any set, or Try Camera coach on an exercise page. Prop your phone or laptop up so your whole body is in view, then step back. You see yourself beside the avatar doing the move, so follow the avatar. The camera counts your reps and says out loud when your speed, range, evenness or leaning needs fixing.'),
+      note: t('Use the You, Avatar and Form notes buttons to show or hide each part. The camera keeps counting even when your picture is hidden. This picture is an example of what you will see. Camera coach cannot see everything, such as a rounded back, and it does not replace a coach.'),
       image: 'camera.gif',
       action: `<button type="button" class="secondary" data-action="camera-practice" data-id="squat">${esc(t('Try Camera coach'))}</button>`,
     },
+    { title: t('Hands-free'), text: t('Tap Hands-free on any set and the camera stays on for the whole workout. It counts your reps, logs each set, runs your rest and moves on. Raise both hands and hold to move on early.'), note: t('You can show or hide yourself and the avatar here too. To change a band or anything else, leave Hands-free first.'), image: 'hands-free.jpg' },
     { title: t('Watch a real video'), text: t('Open any exercise, or How to do it during a set, and tap Watch a real video. If you do not like it, find another or use your own.'), image: 'video.jpg', link: ['#/exercises', t('Exercises')] },
     { title: t('Specials and the 12 week track'), text: t('Open Specials for videos with jump points, sorted by level, and the know-how behind them. Tap Follow this level and Today then sets every workout, day and rep for you.'), image: 'specials.jpg', link: ['#/specials', t('Specials')] },
     { title: t('Choose a workout for each day'), text: t('Pick a workout or a rest day for all seven days. Today then follows your choices.'), image: 'schedule.jpg', link: ['#/schedule', t('Weekly schedule')] },
@@ -199,15 +221,16 @@ export function guideScreen() {
   return `<main class="page guide">
     <h1 class="display" tabindex="-1">${esc(t('Guide'))}</h1>
     <p class="lead">${esc(t('How to use Tensile, step by step.'))}</p>
-    <ol class="guide-steps">${steps.map((step) => `<li class="guide-step">
+    <ol class="guide-steps">${steps.map((step) => `<li class="guide-step${step.table ? ' wide' : ''}">
       <div class="guide-text">
         <h2>${esc(step.title)}</h2>
         <p>${esc(step.text)}</p>
+        ${step.table ?? ''}
         ${step.note ? `<p class="hint">${esc(step.note)}</p>` : ''}
         ${step.action ?? ''}
         ${step.link ? `<a class="plain-link" href="${step.link[0]}">${esc(step.link[1])}</a>` : ''}
       </div>
-      <div class="guide-frame">${picture(step.image, step.title)}</div>
+      ${step.image ? `<div class="guide-frame">${picture(step.image, step.title)}</div>` : ''}
     </li>`).join('')}</ol>
   </main>`;
 }

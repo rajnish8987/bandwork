@@ -116,15 +116,38 @@ function drawFrame(scene, exercise, t) {
   });
 }
 
-const running = new Set();
+// While the camera runs, reading it is the real work and the avatar moves slowly, so 30
+// drawings a second look the same and leave the laptop cooler over a long workout.
+const CAMERA_DRAW_MS = 33;
 
-function loop(now) {
-  for (const f of running) drawFrame(f.scene, f.exercise, phaseAt(now - f.start));
-  if (running.size) requestAnimationFrame(loop);
+const running = new Set();
+let scheduled = false;
+let pagePaused = false;
+let lastDrawn = -Infinity;
+
+// Only ever one loop, however many times figures come and go.
+function schedule() {
+  if (scheduled || !running.size) return;
+  scheduled = true;
+  requestAnimationFrame(loop);
 }
 
-/** Draws a figure into a container. Returns nothing; call stopFigures before replacing it. */
-export function mountFigure(container, exercise) {
+function loop(now) {
+  scheduled = false;
+  if (!pagePaused || now - lastDrawn >= CAMERA_DRAW_MS) {
+    lastDrawn = now;
+    for (const f of running) {
+      if (f.keep || !pagePaused) drawFrame(f.scene, f.exercise, phaseAt(now - f.start));
+    }
+  }
+  schedule();
+}
+
+/**
+ * Draws a figure into a container and returns a function that stops it. A kept figure is
+ * for a screen laid over the page, so it carries on when stopFigures clears the page.
+ */
+export function mountFigure(container, exercise, { keep = false } = {}) {
   const svg = document.createElementNS(SVG, 'svg');
   svg.setAttribute('viewBox', `0 0 ${VIEW.w} ${VIEW.h}`);
   svg.setAttribute('role', 'img');
@@ -135,14 +158,23 @@ export function mountFigure(container, exercise) {
 
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
     drawFrame(scene, exercise, 1);
-    return;
+    return () => {};
   }
   drawFrame(scene, exercise, 0);
-  const wasIdle = running.size === 0;
-  running.add({ scene, exercise, start: performance.now() });
-  if (wasIdle) requestAnimationFrame(loop);
+  const figure = { scene, exercise, keep, start: performance.now() };
+  running.add(figure);
+  schedule();
+  return () => running.delete(figure);
 }
 
+/** Stops the figures on the page, before the page is replaced. */
 export function stopFigures() {
-  running.clear();
+  for (const figure of running) {
+    if (!figure.keep) running.delete(figure);
+  }
+}
+
+/** Rests the page's figures while a screen covers them. */
+export function pausePageFigures(paused) {
+  pagePaused = paused;
 }

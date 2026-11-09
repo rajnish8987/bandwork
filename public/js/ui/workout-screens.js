@@ -127,12 +127,26 @@ export function setScreen({ state, step, draft, swaps, canSpeak }) {
         </div>
         <p class="tempo-status" id="tempo-status" role="status" hidden></p>
 
-        <div class="coach-row">
-          <button type="button" class="coach-button" id="tempo-button" data-action="tempo-toggle">${esc(exercise.timed ? t('Count seconds for me') : t('Count reps for me'))}</button>
-          <button type="button" class="coach-button" data-action="camera-open">${esc(t('Camera coach'))}</button>
-          <button type="button" class="coach-button" data-action="hands-free">${esc(t('Hands-free'))}</button>
-          ${canSpeak ? `<button type="button" class="coach-button" data-action="voice-toggle" aria-pressed="${profile.voice}">${esc(profile.voice ? t('Voice on') : t('Voice off'))}</button>` : ''}
-        </div>
+        <section class="help" aria-labelledby="help-title">
+          <div class="help-head">
+            <h2 id="help-title">${esc(t('Choose your help'))}</h2>
+            ${canSpeak ? `<button type="button" class="voice-switch" role="switch" aria-checked="${profile.voice}" data-action="voice-toggle">${esc(t('Voice'))}</button>` : ''}
+          </div>
+          <div class="coach-row">
+            <button type="button" class="coach-button" id="tempo-button" data-action="tempo-toggle">
+              <strong id="tempo-label">${esc(exercise.timed ? t('Count seconds for me') : t('Count reps for me'))}</strong>
+              <small>${esc(t('Beeps only. It cannot see what you do.'))}</small>
+            </button>
+            <button type="button" class="coach-button" data-action="camera-open">
+              <strong>${esc(t('Camera coach'))}</strong>
+              <small>${esc(t('Counts your real reps and corrects your form, for one set.'))}</small>
+            </button>
+            <button type="button" class="coach-button" data-action="hands-free">
+              <strong>${esc(t('Hands-free'))}</strong>
+              <small>${esc(t('Runs the whole workout: counts, logs, rests, moves on.'))}</small>
+            </button>
+          </div>
+        </section>
 
         ${exercise.bodyweight ? `<p class="hint">${esc(t('No band needed for this one.'))}</p>` : `<fieldset class="chips">
           <legend>${esc(t('Band used'))} <span id="band-label" class="band-label">${esc(labelFor(draft.bandIds, profile.bands))}</span></legend>
